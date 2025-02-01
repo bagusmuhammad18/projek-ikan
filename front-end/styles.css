@@ -270,3 +270,21 @@ a:hover {
 .edit-btn:hover {
   filter: var(--hover-effect);
 }
+
+.delete-btn {
+  width: 100%;
+  padding: 12px;
+  background: #c82333; /* Warna merah gelap untuk efek 'danger' */
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-size: 1rem;
+  margin-top: 1rem;
+}
+
+.delete-btn:hover {
+  filter: var(--hover-effect);
+}

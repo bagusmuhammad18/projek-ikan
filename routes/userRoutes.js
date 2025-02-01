@@ -6,6 +6,7 @@ const auth = require("../middleware/auth");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const transporter = require("../utils/nodemailer");
+const bcrypt = require("bcryptjs");
 
 // Registrasi User
 router.post(
@@ -196,7 +197,15 @@ router.get("/profile", auth, async (req, res) => {
 // Update profil user (terproteksi)
 router.put("/profile", auth, async (req, res) => {
   try {
-    const updates = req.body;
+    // Ambil update dari body
+    const updates = { ...req.body };
+
+    // Jika terdapat perubahan password, hash terlebih dahulu
+    if (updates.password) {
+      updates.password = await bcrypt.hash(updates.password, 10);
+    }
+
+    // Update user dan kembalikan user yang sudah diupdate
     const user = await User.findByIdAndUpdate(req.user.id, updates, {
       new: true,
     });

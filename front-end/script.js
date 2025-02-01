@@ -64,7 +64,7 @@ document.addEventListener("DOMContentLoaded", function () {
         const data = await response.json();
         if (response.ok) {
           localStorage.setItem("token", data.token);
-          alert("Login berhasil!");
+          // alert("Login berhasil!");
           window.location.href = "main.html"; // Redirect ke halaman utama
         } else {
           alert(`Login gagal: ${data.message}`);
@@ -95,6 +95,11 @@ function logout() {
 // 🧑‍💻 Fungsi Buka Profil (Hanya untuk Navigasi)
 function openProfile() {
   window.location.href = "profile.html";
+}
+
+// 🧑‍💻 Fungsi Buka Edit Profil (misalnya menuju halaman edit profil)
+function openEditProfile() {
+  window.location.href = "edit-profile.html";
 }
 
 // 🛠️ Fungsi Load Data Profil (Dipanggil saat halaman profil dimuat)
@@ -130,4 +135,45 @@ function loadProfileData() {
 // Panggil loadProfileData saat halaman profil dimuat
 if (window.location.pathname.includes("profile.html")) {
   loadProfileData();
+}
+
+// 🗑️ Fungsi Hapus Akun
+function deleteAccount() {
+  if (
+    !confirm(
+      "Apakah Anda yakin ingin menghapus akun Anda? Tindakan ini tidak dapat dibatalkan."
+    )
+  ) {
+    return;
+  }
+
+  const token = localStorage.getItem("token");
+  if (!token) {
+    alert("Anda belum login!");
+    return;
+  }
+
+  fetch("http://localhost:5000/api/users/profile", {
+    method: "DELETE",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: "Bearer " + token,
+    },
+  })
+    .then(async (response) => {
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Gagal menghapus akun");
+      }
+      return response.json();
+    })
+    .then((data) => {
+      alert(data.message || "Akun berhasil dihapus");
+      localStorage.removeItem("token");
+      window.location.href = "index.html"; // Redirect ke halaman login
+    })
+    .catch((error) => {
+      console.error("Error:", error);
+      alert("Terjadi kesalahan: " + error.message);
+    });
 }

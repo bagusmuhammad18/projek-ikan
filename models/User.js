@@ -2,6 +2,46 @@ const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 const crypto = require("crypto");
 
+// Skema alamat sesuai permintaan
+const addressSchema = new mongoose.Schema({
+  recipientName: {
+    type: String,
+    required: true,
+    trim: true,
+  },
+  phoneNumber: {
+    type: String,
+    required: true,
+    trim: true,
+  },
+  streetAddress: {
+    // Nama jalan, gedung, no. rumah
+    type: String,
+    required: true,
+    trim: true,
+  },
+  postalCode: {
+    type: String,
+    required: true,
+    trim: true,
+  },
+  province: {
+    type: String,
+    required: true,
+    trim: true,
+  },
+  city: {
+    type: String,
+    required: true,
+    trim: true,
+  },
+  isPrimary: {
+    // Checkbox "Atur sebagai alamat utama"
+    type: Boolean,
+    default: false,
+  },
+});
+
 const userSchema = new mongoose.Schema({
   name: {
     type: String,
@@ -36,9 +76,22 @@ const userSchema = new mongoose.Schema({
   },
   resetPasswordToken: String,
   resetPasswordExpire: Date,
+  // Order (opsional): daftar pesanan yang dimiliki user
+  orders: [
+    {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Order",
+      default: [],
+    },
+  ],
+  // Addresses: array of alamat sesuai skema addressSchema
+  addresses: {
+    type: [addressSchema],
+    default: [],
+  },
 });
 
-// Hash password sebelum menyimpan user
+// Middleware: Hash password sebelum menyimpan user
 userSchema.pre("save", async function (next) {
   if (!this.isModified("password")) return next();
   this.password = await bcrypt.hash(this.password, 10);
@@ -50,7 +103,7 @@ userSchema.methods.comparePassword = async function (password) {
   return await bcrypt.compare(password, this.password);
 };
 
-// Generate Reset Password Token
+// Method untuk generate token reset password
 userSchema.methods.generateResetPasswordToken = function () {
   const resetToken = crypto.randomBytes(20).toString("hex");
 
