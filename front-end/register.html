@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Register - Marketplace</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="auth-container">
+      <div class="form-card">
+        <h2>Registrasi</h2>
+        <form id="registerForm">
+          <input
+            type="text"
+            id="registerName"
+            placeholder="Nama Lengkap"
+            required
+          />
+          <input
+            type="tel"
+            id="registerPhone"
+            placeholder="Nomor Telepon"
+            required
+            pattern="[0-9]{10,13}"
+            title="Masukkan nomor telepon yang valid (10-13 digit)"
+          />
+          <input type="email" id="registerEmail" placeholder="Email" required />
+          <input
+            type="password"
+            id="registerPassword"
+            placeholder="Kata Sandi"
+            required
+          />
+          <button type="submit">Daftar</button>
+        </form>
+        <p class="redirect-text">
+          Sudah punya akun? <a href="index.html">Login di sini</a>
+        </p>
+      </div>
+    </div>
+    <script src="script.js"></script>
+  </body>
+</html>
