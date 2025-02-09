@@ -3,6 +3,14 @@ const router = express.Router();
 const Product = require("../models/Product");
 const { body, validationResult } = require("express-validator");
 const auth = require("../middleware/auth");
+const multer = require("multer");
+const sharp = require("sharp");
+const path = require("path");
+const fs = require("fs");
+
+// Konfigurasi Multer (Upload ke memory storage)
+const storage = multer.memoryStorage();
+const upload = multer({ storage });
 
 // Middleware untuk validasi input
 const validateProduct = [
@@ -12,6 +20,44 @@ const validateProduct = [
   body("size").notEmpty().withMessage("Size is required"),
   body("stock").isNumeric().withMessage("Stock must be a number"),
 ];
+
+/**
+ * Helper function untuk memproses dan menyimpan gambar.
+ * Jika oldImagePath disediakan, file lama akan dihapus.
+ *
+ * @param {Buffer} fileBuffer - Buffer dari file gambar yang diupload
+ * @param {String|null} oldImagePath - (Optional) Path relatif gambar lama, jika ada
+ * @returns {String} - Path relatif gambar yang sudah diresize
+ */
+async function processImageUpload(fileBuffer, oldImagePath = null) {
+  const uploadDir = path.join(__dirname, "../uploads");
+  if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+  }
+
+  // Hapus gambar lama jika ada
+  if (oldImagePath) {
+    const fullOldImagePath = path.join(__dirname, "../", oldImagePath);
+    if (fs.existsSync(fullOldImagePath)) {
+      fs.unlinkSync(fullOldImagePath);
+    }
+  }
+
+  // Generate nama file baru yang unik
+  const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+  const fileName = `${uniqueSuffix}.jpeg`;
+  // Gunakan path.posix.join agar separator selalu forward slash (/)
+  const relativeImagePath = path.posix.join("uploads", fileName);
+  const fullImagePath = path.join(__dirname, "../", relativeImagePath);
+
+  // Resize dan simpan gambar menggunakan sharp
+  await sharp(fileBuffer)
+    .toFormat("jpeg")
+    .jpeg({ quality: 80 })
+    .toFile(fullImagePath);
+
+  return relativeImagePath;
+}
 
 // Get all products
 router.get("/", async (req, res) => {
@@ -23,54 +69,91 @@ router.get("/", async (req, res) => {
   }
 });
 
-// Create a new product (hanya seller/admin)
-router.post("/", auth, validateProduct, async (req, res) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json({ errors: errors.array() });
-  }
-
-  try {
-    const newProduct = new Product({
-      ...req.body,
-      //   seller: req.user.id, // Jika sudah ada autentikasi
-      //   seller: "6607b1e6d4a9d8a9f4f3b1a0", //dummy seller ID
-    });
-    await newProduct.save();
-    res.status(201).json(newProduct);
-  } catch (err) {
-    // Tampilkan error detail untuk debugging
-    res
-      .status(500)
-      .json({ message: "Failed to create product", error: err.message });
-  }
-});
-
-// Update product (hanya seller yang punya akses)
-router.put("/:id", auth, validateProduct, async (req, res) => {
+// Get one product by ID
+router.get("/:id", async (req, res) => {
   try {
     const product = await Product.findById(req.params.id);
     if (!product) {
       return res.status(404).json({ message: "Product not found" });
     }
-
-    // Cek apakah user adalah pemilik produk
-    if (product.seller.toString() !== req.user.id) {
-      return res.status(403).json({ message: "Unauthorized" });
-    }
-
-    const updatedProduct = await Product.findByIdAndUpdate(
-      req.params.id,
-      { $set: req.body },
-      { new: true }
-    );
-    res.json(updatedProduct);
+    res.json(product);
   } catch (err) {
-    res
-      .status(500)
-      .json({ message: "Failed to update product", error: err.message });
+    res.status(500).json({ message: "Server error", error: err.message });
   }
 });
+
+// Create a new product (hanya seller/admin)
+router.post(
+  "/",
+  auth,
+  upload.single("image"),
+  validateProduct,
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    try {
+      let imagePath = null;
+      if (req.file) {
+        imagePath = await processImageUpload(req.file.buffer);
+      }
+
+      const newProduct = new Product({
+        ...req.body,
+        seller: req.user.id,
+        image: imagePath, // Simpan path relatif gambar (misalnya: "uploads/1234567890.jpeg")
+      });
+
+      await newProduct.save();
+      res.status(201).json(newProduct);
+    } catch (err) {
+      res
+        .status(500)
+        .json({ message: "Failed to create product", error: err.message });
+    }
+  }
+);
+
+// Update product (hanya seller yang punya akses)
+router.put(
+  "/:id",
+  auth,
+  upload.single("image"),
+  validateProduct,
+  async (req, res) => {
+    try {
+      const product = await Product.findById(req.params.id);
+      if (!product) {
+        return res.status(404).json({ message: "Product not found" });
+      }
+
+      // Cek apakah user adalah pemilik produk
+      if (product.seller.toString() !== req.user.id) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+
+      let imagePath = product.image; // Gunakan gambar lama secara default
+      if (req.file) {
+        // Proses gambar baru dan hapus gambar lama (jika ada)
+        imagePath = await processImageUpload(req.file.buffer, product.image);
+      }
+
+      const updatedProduct = await Product.findByIdAndUpdate(
+        req.params.id,
+        { ...req.body, image: imagePath },
+        { new: true }
+      );
+
+      res.json(updatedProduct);
+    } catch (err) {
+      res
+        .status(500)
+        .json({ message: "Failed to update product", error: err.message });
+    }
+  }
+);
 
 // Delete product
 router.delete("/:id", auth, async (req, res) => {
@@ -84,6 +167,14 @@ router.delete("/:id", auth, async (req, res) => {
       return res.status(403).json({ message: "Unauthorized" });
     }
 
+    // Hapus gambar jika ada
+    if (product.image) {
+      const fullImagePath = path.join(__dirname, "../", product.image);
+      if (fs.existsSync(fullImagePath)) {
+        fs.unlinkSync(fullImagePath);
+      }
+    }
+
     await product.deleteOne();
     res.json({ message: "Product deleted" });
   } catch (err) {
@@ -93,7 +184,7 @@ router.delete("/:id", auth, async (req, res) => {
   }
 });
 
-// //Delete All Products
+// //Delete All Products (opsional)
 // router.delete("/", async (req, res) => {
 //   try {
 //     await Product.deleteMany();

@@ -22,8 +22,8 @@ const productSchema = new mongoose.Schema({
   },
   seller: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: "User", // Jika sudah ada model User
-    required: false, // Ganti jadi true jika sudah ada autentikasi
+    ref: "User",
+    required: true,
   },
   stock: {
     type: Number,
