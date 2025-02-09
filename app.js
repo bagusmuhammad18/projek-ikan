@@ -4,8 +4,10 @@ const bodyParser = require("body-parser");
 const cors = require("cors");
 const path = require("path");
 require("dotenv").config();
+
 const productRoutes = require("./routes/productRoutes");
 const userRoutes = require("./routes/userRoutes");
+const cartRoutes = require("./routes/cartRoutes");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -18,6 +20,7 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads"))); // Serve f
 // Routes
 app.use("/api/products", productRoutes);
 app.use("/api/users", userRoutes);
+app.use("/api/cart", cartRoutes);
 
 // Koneksi ke MongoDB
 mongoose
