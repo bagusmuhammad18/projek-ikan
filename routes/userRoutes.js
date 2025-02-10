@@ -6,15 +6,36 @@ const auth = require("../middleware/auth");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const transporter = require("../utils/nodemailer");
-const bcrypt = require("bcryptjs");
+const rateLimit = require("express-rate-limit");
+const mongoSanitize = require("express-mongo-sanitize");
+const bcrypt = require("bcryptjs"); // Tetap diperlukan untuk verifikasi password saat login
 
-// Registrasi User
+// Middleware Rate Limiting untuk mencegah brute-force attack
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 menit
+  max: 100, // Maksimal 5 request dalam 15 menit
+  message: { message: "Terlalu banyak percobaan, coba lagi nanti." },
+});
+
+// Middleware untuk sanitasi query MongoDB (mencegah NoSQL Injection)
+router.use(mongoSanitize());
+
+// Registrasi User dengan Rate Limiting
 router.post(
   "/register",
+  limiter,
   [
-    body("name").notEmpty().withMessage("Nama wajib diisi"),
-    body("phoneNumber").notEmpty().withMessage("Nomor telepon wajib diisi"),
-    body("email").isEmail().withMessage("Email tidak valid"),
+    body("name").trim().notEmpty().withMessage("Nama wajib diisi").escape(),
+    body("phoneNumber")
+      .trim()
+      .notEmpty()
+      .withMessage("Nomor telepon wajib diisi")
+      .escape(),
+    body("email")
+      .trim()
+      .isEmail()
+      .withMessage("Email tidak valid")
+      .normalizeEmail(),
     body("password")
       .isLength({ min: 6 })
       .withMessage("Password minimal 6 karakter"),
@@ -28,25 +49,22 @@ router.post(
     try {
       const { name, phoneNumber, email, password } = req.body;
 
-      // Cek apakah email sudah terdaftar
+      // Cek apakah email atau nomor telepon sudah terdaftar
       const existingUser = await User.findOne({ email });
-      if (existingUser) {
+      if (existingUser)
         return res.status(400).json({ message: "Email sudah terdaftar" });
-      }
 
-      // Cek apakah nomor telepon sudah terdaftar
-      const existingPhoneNumber = await User.findOne({ phoneNumber });
-      if (existingPhoneNumber) {
+      const existingPhone = await User.findOne({ phoneNumber });
+      if (existingPhone)
         return res
           .status(400)
           .json({ message: "Nomor telepon sudah terdaftar" });
-      }
 
-      // Buat user baru
+      // Buat user baru (password akan otomatis di-hash di model User.js)
       const user = new User({ name, phoneNumber, email, password });
       await user.save();
 
-      // Generate token JWT
+      // Generate JWT Token
       const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
         expiresIn: "7d",
       });
@@ -58,11 +76,16 @@ router.post(
   }
 );
 
-// Login User
+// Login User dengan Rate Limiting
 router.post(
   "/login",
+  limiter,
   [
-    body("email").isEmail().withMessage("Email tidak valid"),
+    body("email")
+      .trim()
+      .isEmail()
+      .withMessage("Email tidak valid")
+      .normalizeEmail(),
     body("password").notEmpty().withMessage("Password wajib diisi"),
   ],
   async (req, res) => {
@@ -75,17 +98,15 @@ router.post(
       const { email, password } = req.body;
       const user = await User.findOne({ email });
 
-      if (!user) {
+      if (!user)
         return res.status(401).json({ message: "Email atau password salah" });
-      }
 
-      // Bandingkan password
+      // Verifikasi password
       const isMatch = await user.comparePassword(password);
-      if (!isMatch) {
+      if (!isMatch)
         return res.status(401).json({ message: "Email atau password salah" });
-      }
 
-      // Generate token JWT
+      // Generate Token
       const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
         expiresIn: "7d",
       });
@@ -100,7 +121,14 @@ router.post(
 // Lupa Password - Kirim Email Reset
 router.post(
   "/forgot-password",
-  [body("email").isEmail().withMessage("Email tidak valid")],
+  limiter,
+  [
+    body("email")
+      .trim()
+      .isEmail()
+      .withMessage("Email tidak valid")
+      .normalizeEmail(),
+  ],
   async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -111,30 +139,21 @@ router.post(
       const { email } = req.body;
       const user = await User.findOne({ email });
 
-      if (!user) {
+      if (!user)
         return res.status(404).json({ message: "User tidak ditemukan" });
-      }
 
-      // Generate token reset password
-      const resetToken = crypto.randomBytes(20).toString("hex");
-      user.resetPasswordToken = resetToken;
-      user.resetPasswordExpire = Date.now() + 3600000; // Token expired in 1 hour
+      // Generate reset token
+      const resetToken = user.generateResetPasswordToken();
       await user.save();
 
-      // Buat URL reset password
-      const resetUrl = `http://localhost:5000/reset-password/${resetToken}`;
+      const resetUrl = `${process.env.CLIENT_URL}/reset-password/${resetToken}`;
 
-      // Kirim email
+      // Kirim email reset password
       const mailOptions = {
         from: process.env.EMAIL_USER,
         to: user.email,
         subject: "Reset Password - Marketplace",
-        html: `
-          <h3>Reset Password</h3>
-          <p>Klik link berikut untuk reset password:</p>
-          <a href="${resetUrl}">${resetUrl}</a>
-          <p>Link ini berlaku selama 1 jam</p>
-        `,
+        html: `<h3>Reset Password</h3><p>Klik link berikut:</p><a href="${resetUrl}">${resetUrl}</a><p>Link ini berlaku selama 1 jam.</p>`,
       };
 
       await transporter.sendMail(mailOptions);
@@ -147,7 +166,7 @@ router.post(
   }
 );
 
-// Reset Password dengan Token
+// Reset Password
 router.post(
   "/reset-password/:token",
   [
@@ -165,16 +184,19 @@ router.post(
       const { token } = req.params;
       const { password } = req.body;
 
+      const hashedToken = crypto
+        .createHash("sha256")
+        .update(token)
+        .digest("hex");
       const user = await User.findOne({
-        resetPasswordToken: token,
+        resetPasswordToken: hashedToken,
         resetPasswordExpire: { $gt: Date.now() },
       });
 
-      if (!user) {
+      if (!user)
         return res.status(400).json({ message: "Token invalid atau expired" });
-      }
 
-      // Update password
+      // Update password (akan otomatis di-hash di model User.js)
       user.password = password;
       user.resetPasswordToken = undefined;
       user.resetPasswordExpire = undefined;
@@ -189,27 +211,29 @@ router.post(
   }
 );
 
-// Dapatkan profil user (terproteksi)
+// Profil User
 router.get("/profile", auth, async (req, res) => {
   res.json(req.user);
 });
 
-// Update profil user (terproteksi)
+// Update Profil User
 router.put("/profile", auth, async (req, res) => {
   try {
-    // Ambil update dari body
     const updates = { ...req.body };
 
-    // Jika terdapat perubahan password, hash terlebih dahulu
+    // Jika ada perubahan password, gunakan fitur hashing di User.js
     if (updates.password) {
-      updates.password = await bcrypt.hash(updates.password, 10);
+      const user = await User.findById(req.user.id);
+      user.password = updates.password;
+      await user.save();
+      delete updates.password;
     }
 
-    // Update user dan kembalikan user yang sudah diupdate
-    const user = await User.findByIdAndUpdate(req.user.id, updates, {
+    const updatedUser = await User.findByIdAndUpdate(req.user.id, updates, {
       new: true,
     });
-    res.json(user);
+
+    res.json(updatedUser);
   } catch (err) {
     res
       .status(500)
@@ -217,7 +241,7 @@ router.put("/profile", auth, async (req, res) => {
   }
 });
 
-// Hapus akun user (terproteksi)
+// Hapus Akun User
 router.delete("/profile", auth, async (req, res) => {
   try {
     await User.findByIdAndDelete(req.user.id);
