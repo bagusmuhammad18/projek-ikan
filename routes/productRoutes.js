@@ -4,11 +4,10 @@ const Product = require("../models/Product");
 const { body, validationResult } = require("express-validator");
 const auth = require("../middleware/auth");
 const multer = require("multer");
-const sharp = require("sharp");
-const path = require("path");
-const fs = require("fs");
+const streamifier = require("streamifier");
+const cloudinary = require("../config/cloudinary");
 
-// Konfigurasi Multer (Upload ke memory storage)
+// Konfigurasi Multer untuk menyimpan file di memory
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
 
@@ -47,43 +46,34 @@ const validateProduct = [
   body("isPublished")
     .optional()
     .isBoolean()
-    .withMessage("isPublished must be a boolean"), // ✅ Tambahkan validasi isPublished
+    .withMessage("isPublished must be a boolean"),
 ];
 
 /**
- * Helper function untuk memproses dan menyimpan gambar.
- * Jika oldImagePath disediakan, file lama akan dihapus.
+ * Helper function untuk meng-upload gambar ke Cloudinary.
+ * File yang di-upload diambil dari buffer yang diberikan oleh Multer.
  */
-async function processImageUpload(fileBuffer, oldImagePath = null) {
-  const uploadDir = path.join(__dirname, "../uploads");
-  if (!fs.existsSync(uploadDir)) {
-    fs.mkdirSync(uploadDir, { recursive: true });
-  }
-
-  if (oldImagePath) {
-    const fullOldImagePath = path.join(__dirname, "../", oldImagePath);
-    if (fs.existsSync(fullOldImagePath)) {
-      fs.unlinkSync(fullOldImagePath);
-    }
-  }
-
-  const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-  const fileName = `${uniqueSuffix}.jpeg`;
-  const relativeImagePath = path.posix.join("uploads", fileName);
-  const fullImagePath = path.join(__dirname, "../", relativeImagePath);
-
-  await sharp(fileBuffer)
-    .toFormat("jpeg")
-    .jpeg({ quality: 80 })
-    .toFile(fullImagePath);
-
-  return relativeImagePath;
+async function uploadToCloudinary(fileBuffer) {
+  return new Promise((resolve, reject) => {
+    const uploadStream = cloudinary.uploader.upload_stream(
+      {
+        folder: "ikan", // Nama folder di Cloudinary, misalnya "ikan"
+        format: "jpeg",
+        transformation: [{ quality: "auto", fetch_format: "auto" }],
+      },
+      (error, result) => {
+        if (error) reject(error);
+        else resolve(result.secure_url);
+      }
+    );
+    streamifier.createReadStream(fileBuffer).pipe(uploadStream);
+  });
 }
 
 // Get all published products (untuk user umum)
 router.get("/", async (req, res) => {
   try {
-    const products = await Product.find({ isPublished: true }); // ✅ Hanya produk yang sudah dipublikasikan
+    const products = await Product.find({ isPublished: true });
     res.json(products);
   } catch (err) {
     res.status(500).json({ message: "Server error" });
@@ -93,7 +83,7 @@ router.get("/", async (req, res) => {
 // Get all products (termasuk yang belum dipublish) - hanya untuk admin/seller
 router.get("/all", auth, async (req, res) => {
   try {
-    const products = await Product.find(); // ✅ Menampilkan semua produk tanpa filter
+    const products = await Product.find();
     res.json(products);
   } catch (err) {
     res.status(500).json({ message: "Server error" });
@@ -126,24 +116,25 @@ router.post(
     }
 
     try {
-      let imagePath = null;
+      let imageUrl = null;
       if (req.file) {
-        imagePath = await processImageUpload(req.file.buffer);
+        imageUrl = await uploadToCloudinary(req.file.buffer);
       }
 
       const newProduct = new Product({
         ...req.body,
         seller: req.user.id,
-        image: imagePath,
-        isPublished: req.body.isPublished || false, // ✅ Tambahkan isPublished dengan default false
+        image: imageUrl,
+        isPublished: req.body.isPublished || false,
       });
 
       await newProduct.save();
       res.status(201).json(newProduct);
     } catch (err) {
-      res
-        .status(500)
-        .json({ message: "Failed to create product", error: err.message });
+      res.status(500).json({
+        message: "Failed to create product",
+        error: err.message,
+      });
     }
   }
 );
@@ -165,16 +156,16 @@ router.put(
         return res.status(403).json({ message: "Unauthorized" });
       }
 
-      let imagePath = product.image;
+      let imageUrl = product.image;
       if (req.file) {
-        imagePath = await processImageUpload(req.file.buffer, product.image);
+        imageUrl = await uploadToCloudinary(req.file.buffer);
       }
 
       const updatedProduct = await Product.findByIdAndUpdate(
         req.params.id,
         {
           ...req.body,
-          image: imagePath,
+          image: imageUrl,
           isPublished: req.body.isPublished || product.isPublished,
         },
         { new: true }
@@ -182,9 +173,10 @@ router.put(
 
       res.json(updatedProduct);
     } catch (err) {
-      res
-        .status(500)
-        .json({ message: "Failed to update product", error: err.message });
+      res.status(500).json({
+        message: "Failed to update product",
+        error: err.message,
+      });
     }
   }
 );
@@ -201,19 +193,16 @@ router.delete("/:id", auth, async (req, res) => {
       return res.status(403).json({ message: "Unauthorized" });
     }
 
-    if (product.image) {
-      const fullImagePath = path.join(__dirname, "../", product.image);
-      if (fs.existsSync(fullImagePath)) {
-        fs.unlinkSync(fullImagePath);
-      }
-    }
+    // Jika diperlukan, implementasikan penghapusan gambar di Cloudinary di sini
+    // Namun, untuk saat ini kita hanya menghapus data produk dari database
 
     await product.deleteOne();
     res.json({ message: "Product deleted" });
   } catch (err) {
-    res
-      .status(500)
-      .json({ message: "Failed to delete product", error: err.message });
+    res.status(500).json({
+      message: "Failed to delete product",
+      error: err.message,
+    });
   }
 });
 
@@ -223,9 +212,10 @@ router.delete("/", async (req, res) => {
     await Product.deleteMany();
     res.json({ message: "All products deleted" });
   } catch (err) {
-    res
-      .status(500)
-      .json({ message: "Failed to delete all products", error: err.message });
+    res.status(500).json({
+      message: "Failed to delete all products",
+      error: err.message,
+    });
   }
 });
 
