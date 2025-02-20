@@ -34,6 +34,29 @@ const productSchema = new mongoose.Schema({
     type: String,
     required: false,
   },
+  discount: {
+    type: Number,
+    default: 0, // Default discount 0 jika tidak diberikan
+  },
+  weight: {
+    type: Number,
+    // Contoh: 1.2 (dalam satuan kilogram, misalnya)
+  },
+  dimensions: {
+    height: { type: Number }, // Contoh: 10
+    length: { type: Number }, // Contoh: 30
+    width: { type: Number }, // Contoh: 10
+  },
+  type: {
+    color: {
+      type: [String],
+      // Contoh: ['Merah', 'hitam']
+    },
+    size: {
+      type: [String],
+      // Contoh: ['S', 'M', 'L']
+    },
+  },
   createdAt: {
     type: Date,
     default: Date.now,

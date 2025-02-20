@@ -19,6 +19,32 @@ const validateProduct = [
   body("price").isNumeric().withMessage("Price must be a number"),
   body("size").notEmpty().withMessage("Size is required"),
   body("stock").isNumeric().withMessage("Stock must be a number"),
+  // Validasi untuk field tambahan
+  body("discount")
+    .optional()
+    .isNumeric()
+    .withMessage("Discount must be a number"),
+  body("weight").optional().isNumeric().withMessage("Weight must be a number"),
+  body("dimensions.height")
+    .optional()
+    .isNumeric()
+    .withMessage("Height must be a number"),
+  body("dimensions.length")
+    .optional()
+    .isNumeric()
+    .withMessage("Length must be a number"),
+  body("dimensions.width")
+    .optional()
+    .isNumeric()
+    .withMessage("Width must be a number"),
+  body("type.color")
+    .optional()
+    .isArray()
+    .withMessage("Type color must be an array"),
+  body("type.size")
+    .optional()
+    .isArray()
+    .withMessage("Type size must be an array"),
 ];
 
 /**
