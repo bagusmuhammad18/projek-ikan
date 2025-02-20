@@ -19,7 +19,6 @@ const validateProduct = [
   body("price").isNumeric().withMessage("Price must be a number"),
   body("size").notEmpty().withMessage("Size is required"),
   body("stock").isNumeric().withMessage("Stock must be a number"),
-  // Validasi untuk field tambahan
   body("discount")
     .optional()
     .isNumeric()
@@ -45,15 +44,15 @@ const validateProduct = [
     .optional()
     .isArray()
     .withMessage("Type size must be an array"),
+  body("isPublished")
+    .optional()
+    .isBoolean()
+    .withMessage("isPublished must be a boolean"), // ✅ Tambahkan validasi isPublished
 ];
 
 /**
  * Helper function untuk memproses dan menyimpan gambar.
  * Jika oldImagePath disediakan, file lama akan dihapus.
- *
- * @param {Buffer} fileBuffer - Buffer dari file gambar yang diupload
- * @param {String|null} oldImagePath - (Optional) Path relatif gambar lama, jika ada
- * @returns {String} - Path relatif gambar yang sudah diresize
  */
 async function processImageUpload(fileBuffer, oldImagePath = null) {
   const uploadDir = path.join(__dirname, "../uploads");
@@ -61,7 +60,6 @@ async function processImageUpload(fileBuffer, oldImagePath = null) {
     fs.mkdirSync(uploadDir, { recursive: true });
   }
 
-  // Hapus gambar lama jika ada
   if (oldImagePath) {
     const fullOldImagePath = path.join(__dirname, "../", oldImagePath);
     if (fs.existsSync(fullOldImagePath)) {
@@ -69,14 +67,11 @@ async function processImageUpload(fileBuffer, oldImagePath = null) {
     }
   }
 
-  // Generate nama file baru yang unik
   const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
   const fileName = `${uniqueSuffix}.jpeg`;
-  // Gunakan path.posix.join agar separator selalu forward slash (/)
   const relativeImagePath = path.posix.join("uploads", fileName);
   const fullImagePath = path.join(__dirname, "../", relativeImagePath);
 
-  // Resize dan simpan gambar menggunakan sharp
   await sharp(fileBuffer)
     .toFormat("jpeg")
     .jpeg({ quality: 80 })
@@ -85,10 +80,20 @@ async function processImageUpload(fileBuffer, oldImagePath = null) {
   return relativeImagePath;
 }
 
-// Get all products
+// Get all published products (untuk user umum)
 router.get("/", async (req, res) => {
   try {
-    const products = await Product.find();
+    const products = await Product.find({ isPublished: true }); // ✅ Hanya produk yang sudah dipublikasikan
+    res.json(products);
+  } catch (err) {
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// Get all products (termasuk yang belum dipublish) - hanya untuk admin/seller
+router.get("/all", auth, async (req, res) => {
+  try {
+    const products = await Product.find(); // ✅ Menampilkan semua produk tanpa filter
     res.json(products);
   } catch (err) {
     res.status(500).json({ message: "Server error" });
@@ -129,7 +134,8 @@ router.post(
       const newProduct = new Product({
         ...req.body,
         seller: req.user.id,
-        image: imagePath, // Simpan path relatif gambar (misalnya: "uploads/1234567890.jpeg")
+        image: imagePath,
+        isPublished: req.body.isPublished || false, // ✅ Tambahkan isPublished dengan default false
       });
 
       await newProduct.save();
@@ -155,20 +161,22 @@ router.put(
         return res.status(404).json({ message: "Product not found" });
       }
 
-      // Cek apakah user adalah pemilik produk
       if (product.seller.toString() !== req.user.id) {
         return res.status(403).json({ message: "Unauthorized" });
       }
 
-      let imagePath = product.image; // Gunakan gambar lama secara default
+      let imagePath = product.image;
       if (req.file) {
-        // Proses gambar baru dan hapus gambar lama (jika ada)
         imagePath = await processImageUpload(req.file.buffer, product.image);
       }
 
       const updatedProduct = await Product.findByIdAndUpdate(
         req.params.id,
-        { ...req.body, image: imagePath },
+        {
+          ...req.body,
+          image: imagePath,
+          isPublished: req.body.isPublished || product.isPublished,
+        },
         { new: true }
       );
 
@@ -193,7 +201,6 @@ router.delete("/:id", auth, async (req, res) => {
       return res.status(403).json({ message: "Unauthorized" });
     }
 
-    // Hapus gambar jika ada
     if (product.image) {
       const fullImagePath = path.join(__dirname, "../", product.image);
       if (fs.existsSync(fullImagePath)) {
@@ -210,16 +217,16 @@ router.delete("/:id", auth, async (req, res) => {
   }
 });
 
-// //Delete All Products (opsional)
-// router.delete("/", async (req, res) => {
-//   try {
-//     await Product.deleteMany();
-//     res.json({ message: "All products deleted" });
-//   } catch (err) {
-//     res
-//       .status(500)
-//       .json({ message: "Failed to delete all products", error: err.message });
-//   }
-// });
+// Delete All Products (opsional)
+router.delete("/", async (req, res) => {
+  try {
+    await Product.deleteMany();
+    res.json({ message: "All products deleted" });
+  } catch (err) {
+    res
+      .status(500)
+      .json({ message: "Failed to delete all products", error: err.message });
+  }
+});
 
 module.exports = router;
