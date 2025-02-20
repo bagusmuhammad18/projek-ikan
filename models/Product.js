@@ -15,11 +15,6 @@ const productSchema = new mongoose.Schema({
     required: true,
     min: 0,
   },
-  size: {
-    type: String,
-    required: true,
-    enum: ["S", "M", "L", "XL"],
-  },
   seller: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "User",

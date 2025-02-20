@@ -16,7 +16,6 @@ const validateProduct = [
   body("name").notEmpty().withMessage("Name is required"),
   body("description").notEmpty().withMessage("Description is required"),
   body("price").isNumeric().withMessage("Price must be a number"),
-  body("size").notEmpty().withMessage("Size is required"),
   body("stock").isNumeric().withMessage("Stock must be a number"),
   body("discount")
     .optional()
@@ -49,15 +48,12 @@ const validateProduct = [
     .withMessage("isPublished must be a boolean"),
 ];
 
-/**
- * Helper function untuk meng-upload gambar ke Cloudinary.
- * File yang di-upload diambil dari buffer yang diberikan oleh Multer.
- */
+// Helper function untuk upload gambar ke Cloudinary
 async function uploadToCloudinary(fileBuffer) {
   return new Promise((resolve, reject) => {
     const uploadStream = cloudinary.uploader.upload_stream(
       {
-        folder: "ikan", // Nama folder di Cloudinary, misalnya "ikan"
+        folder: "ikan",
         format: "jpeg",
         transformation: [{ quality: "auto", fetch_format: "auto" }],
       },
@@ -70,7 +66,7 @@ async function uploadToCloudinary(fileBuffer) {
   });
 }
 
-// Get all published products (untuk user umum)
+// Get all published products
 router.get("/", async (req, res) => {
   try {
     const products = await Product.find({ isPublished: true });
@@ -80,7 +76,7 @@ router.get("/", async (req, res) => {
   }
 });
 
-// Get all products (termasuk yang belum dipublish) - hanya untuk admin/seller
+// Get all products (for admin/seller)
 router.get("/all", auth, async (req, res) => {
   try {
     const products = await Product.find();
@@ -103,7 +99,7 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-// Create a new product (hanya seller/admin)
+// Create a new product
 router.post(
   "/",
   auth,
@@ -139,7 +135,7 @@ router.post(
   }
 );
 
-// Update product (hanya seller yang punya akses)
+// Update product
 router.put(
   "/:id",
   auth,
@@ -193,9 +189,6 @@ router.delete("/:id", auth, async (req, res) => {
       return res.status(403).json({ message: "Unauthorized" });
     }
 
-    // Jika diperlukan, implementasikan penghapusan gambar di Cloudinary di sini
-    // Namun, untuk saat ini kita hanya menghapus data produk dari database
-
     await product.deleteOne();
     res.json({ message: "Product deleted" });
   } catch (err) {
@@ -206,7 +199,7 @@ router.delete("/:id", auth, async (req, res) => {
   }
 });
 
-// Delete All Products (opsional)
+// Delete all products
 router.delete("/", async (req, res) => {
   try {
     await Product.deleteMany();
