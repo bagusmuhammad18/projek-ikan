@@ -67,13 +67,72 @@ async function uploadToCloudinary(fileBuffer) {
   });
 }
 
-// Get all published products
+// Get all published products with search and filter
 router.get("/", async (req, res) => {
   try {
-    const products = await Product.find({ isPublished: true });
-    res.json(products);
+    const {
+      search, // Pencarian berdasarkan nama atau SKU
+      minPrice, // Filter harga minimum
+      maxPrice, // Filter harga maksimum
+      color, // Filter berdasarkan warna
+      size, // Filter berdasarkan ukuran
+      sortBy = "createdAt", // Urutan default: waktu pembuatan
+      order = "desc", // Urutan default: descending
+      page = 1, // Halaman default: 1
+      limit = 10, // Batas item per halaman: 10
+    } = req.query;
+
+    // Buat query awal
+    let query = { isPublished: true };
+
+    // Pencarian berdasarkan nama atau SKU
+    if (search) {
+      query.$or = [
+        { name: { $regex: search, $options: "i" } }, // Case-insensitive
+        { sku: { $regex: search, $options: "i" } },
+      ];
+    }
+
+    // Filter harga
+    if (minPrice || maxPrice) {
+      query.price = {};
+      if (minPrice) query.price.$gte = Number(minPrice);
+      if (maxPrice) query.price.$lte = Number(maxPrice);
+    }
+
+    // Filter berdasarkan warna (case-insensitive)
+    if (color) {
+      const colorArray = color.split(",");
+      query["type.color"] = {
+        $in: colorArray.map((c) => new RegExp(`^${c}$`, "i")),
+      };
+    }
+
+    // Filter berdasarkan ukuran (case-insensitive)
+    if (size) {
+      const sizeArray = size.split(",");
+      query["type.size"] = {
+        $in: sizeArray.map((s) => new RegExp(`^${s}$`, "i")),
+      };
+    }
+
+    // Hitung total dokumen untuk pagination
+    const total = await Product.countDocuments(query);
+
+    // Ambil produk dengan pagination, sorting, dan filtering
+    const products = await Product.find(query)
+      .sort({ [sortBy]: order === "asc" ? 1 : -1 })
+      .skip((page - 1) * limit)
+      .limit(Number(limit));
+
+    res.json({
+      products,
+      totalPages: Math.ceil(total / limit),
+      currentPage: Number(page),
+      totalProducts: total,
+    });
   } catch (err) {
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json({ message: "Server error", error: err.message });
   }
 });
 

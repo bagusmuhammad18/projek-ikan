@@ -2,12 +2,14 @@ const express = require("express");
 const router = express.Router();
 const Order = require("../models/Order");
 const Cart = require("../models/Cart");
+const Product = require("../models/Product");
 const auth = require("../middleware/auth");
 const { body, validationResult } = require("express-validator");
 
 /**
  * POST /api/orders
- * Membuat order dari shopping cart (checkout).
+ * Checkout dari shopping cart ke order.
+ * Pada proses ini, stok produk akan dicek dan dikurangi.
  */
 router.post(
   "/",
@@ -24,6 +26,7 @@ router.post(
     }
 
     try {
+      // Ambil cart user dan populasi data produk
       const cart = await Cart.findOne({ user: req.user.id }).populate(
         "items.product"
       );
@@ -31,10 +34,20 @@ router.post(
         return res.status(400).json({ message: "Cart is empty" });
       }
 
+      // Periksa stok untuk setiap item di cart
+      for (const item of cart.items) {
+        if (item.quantity > item.product.stock) {
+          return res.status(400).json({
+            message: `Stok untuk produk ${item.product.name} tidak mencukupi.`,
+          });
+        }
+      }
+
+      // Buat order items dari data cart
       const orderItems = cart.items.map((item) => ({
         product: item.product._id,
         quantity: item.quantity,
-        price: item.product.price, // harga produk
+        price: item.product.price,
       }));
 
       const totalAmount = orderItems.reduce(
@@ -42,7 +55,14 @@ router.post(
         0
       );
 
-      // Buat order baru
+      // Update stok untuk setiap produk sesuai pesanan
+      for (const item of cart.items) {
+        const product = await Product.findById(item.product._id);
+        product.stock -= item.quantity;
+        await product.save();
+      }
+
+      // Buat order baru dengan data pesanan dan alamat pengiriman
       const newOrder = new Order({
         user: req.user.id,
         items: orderItems,
@@ -50,22 +70,24 @@ router.post(
         shippingAddress: req.body.shippingAddress,
       });
 
-      // Simpan order dan hapus cart
       await newOrder.save();
+
+      // Hapus cart setelah checkout
       await Cart.findOneAndDelete({ user: req.user.id });
 
       res.status(201).json(newOrder);
     } catch (err) {
-      res
-        .status(500)
-        .json({ message: "Failed to place order", error: err.message });
+      res.status(500).json({
+        message: "Failed to place order",
+        error: err.message,
+      });
     }
   }
 );
 
 /**
  * GET /api/orders
- * Mendapatkan daftar order milik user yang sedang login.
+ * Melihat daftar order pengguna
  */
 router.get("/", auth, async (req, res) => {
   try {
@@ -82,7 +104,7 @@ router.get("/", auth, async (req, res) => {
 
 /**
  * GET /api/orders/:id
- * Mendapatkan detail order tertentu (harus milik user).
+ * Melihat detail order tertentu
  */
 router.get("/:id", auth, async (req, res) => {
   try {
@@ -100,8 +122,8 @@ router.get("/:id", auth, async (req, res) => {
 
 /**
  * PUT /api/orders/:id/status
- * Update status order (contoh: Admin-only).
- * Status valid: [Pending, Paid, Processing, Shipped, Delivered, Cancelled].
+ * Update status order (contoh: Admin-only)
+ * Status valid: [Pending, Paid, Processing, Shipped, Delivered, Cancelled]
  */
 router.put("/:id/status", auth, async (req, res) => {
   try {
@@ -128,9 +150,10 @@ router.put("/:id/status", auth, async (req, res) => {
     await order.save();
     res.json(order);
   } catch (err) {
-    res
-      .status(500)
-      .json({ message: "Failed to update order status", error: err.message });
+    res.status(500).json({
+      message: "Failed to update order status",
+      error: err.message,
+    });
   }
 });
 
@@ -153,15 +176,16 @@ router.put("/:id/pay", auth, async (req, res) => {
         .json({ message: "Order sudah dibayar atau tidak bisa diproses" });
     }
 
-    // Simulasi pembayaran sukses
+    // Simulasi pembayaran berhasil
     order.status = "Paid";
     await order.save();
 
     res.json({ message: "Pembayaran berhasil (simulasi)", order });
   } catch (err) {
-    res
-      .status(500)
-      .json({ message: "Failed to simulate payment", error: err.message });
+    res.status(500).json({
+      message: "Failed to simulate payment",
+      error: err.message,
+    });
   }
 });
 
