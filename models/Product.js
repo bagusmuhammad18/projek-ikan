@@ -1,6 +1,11 @@
 const mongoose = require("mongoose");
 
 const productSchema = new mongoose.Schema({
+  sku: {
+    type: String,
+    required: true,
+    trim: true,
+  },
   name: {
     type: String,
     required: true,
@@ -47,7 +52,7 @@ const productSchema = new mongoose.Schema({
   },
   isPublished: {
     type: Boolean,
-    default: false, // Secara default, produk belum dipublikasikan
+    default: false,
   },
   createdAt: {
     type: Date,

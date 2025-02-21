@@ -13,6 +13,7 @@ const upload = multer({ storage });
 
 // Middleware untuk validasi input
 const validateProduct = [
+  body("sku").notEmpty().withMessage("SKU is required"),
   body("name").notEmpty().withMessage("Name is required"),
   body("description").notEmpty().withMessage("Description is required"),
   body("price").isNumeric().withMessage("Price must be a number"),
