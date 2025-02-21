@@ -33,7 +33,14 @@ const orderSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ["Pending", "Processing", "Shipped", "Delivered", "Cancelled"],
+    enum: [
+      "Pending", // Order baru dibuat, belum dibayar
+      "Paid", // Simulasi status 'sudah dibayar'
+      "Processing", // Penjual sedang memproses pesanan
+      "Shipped", // Pesanan dalam pengiriman
+      "Delivered", // Pesanan sudah diterima pembeli
+      "Cancelled", // Pesanan dibatalkan
+    ],
     default: "Pending",
   },
   createdAt: {

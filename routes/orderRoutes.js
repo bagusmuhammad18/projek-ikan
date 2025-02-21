@@ -7,7 +7,7 @@ const { body, validationResult } = require("express-validator");
 
 /**
  * POST /api/orders
- * Checkout dari shopping cart ke order
+ * Membuat order dari shopping cart (checkout).
  */
 router.post(
   "/",
@@ -34,7 +34,7 @@ router.post(
       const orderItems = cart.items.map((item) => ({
         product: item.product._id,
         quantity: item.quantity,
-        price: item.product.price, // Ambil harga produk
+        price: item.product.price, // harga produk
       }));
 
       const totalAmount = orderItems.reduce(
@@ -42,6 +42,7 @@ router.post(
         0
       );
 
+      // Buat order baru
       const newOrder = new Order({
         user: req.user.id,
         items: orderItems,
@@ -49,6 +50,7 @@ router.post(
         shippingAddress: req.body.shippingAddress,
       });
 
+      // Simpan order dan hapus cart
       await newOrder.save();
       await Cart.findOneAndDelete({ user: req.user.id });
 
@@ -63,7 +65,7 @@ router.post(
 
 /**
  * GET /api/orders
- * Melihat daftar order pengguna
+ * Mendapatkan daftar order milik user yang sedang login.
  */
 router.get("/", auth, async (req, res) => {
   try {
@@ -80,7 +82,7 @@ router.get("/", auth, async (req, res) => {
 
 /**
  * GET /api/orders/:id
- * Melihat detail order tertentu
+ * Mendapatkan detail order tertentu (harus milik user).
  */
 router.get("/:id", auth, async (req, res) => {
   try {
@@ -98,13 +100,15 @@ router.get("/:id", auth, async (req, res) => {
 
 /**
  * PUT /api/orders/:id/status
- * Update status order (Admin Only)
+ * Update status order (contoh: Admin-only).
+ * Status valid: [Pending, Paid, Processing, Shipped, Delivered, Cancelled].
  */
 router.put("/:id/status", auth, async (req, res) => {
   try {
     const { status } = req.body;
     const validStatuses = [
       "Pending",
+      "Paid",
       "Processing",
       "Shipped",
       "Delivered",
@@ -127,6 +131,37 @@ router.put("/:id/status", auth, async (req, res) => {
     res
       .status(500)
       .json({ message: "Failed to update order status", error: err.message });
+  }
+});
+
+/**
+ * PUT /api/orders/:id/pay
+ * Simulasi pembayaran order (hanya untuk testing).
+ * Mengubah status order dari 'Pending' ke 'Paid'.
+ */
+router.put("/:id/pay", auth, async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id);
+
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+
+    if (order.status !== "Pending") {
+      return res
+        .status(400)
+        .json({ message: "Order sudah dibayar atau tidak bisa diproses" });
+    }
+
+    // Simulasi pembayaran sukses
+    order.status = "Paid";
+    await order.save();
+
+    res.json({ message: "Pembayaran berhasil (simulasi)", order });
+  } catch (err) {
+    res
+      .status(500)
+      .json({ message: "Failed to simulate payment", error: err.message });
   }
 });
 
