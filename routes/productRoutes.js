@@ -71,24 +71,23 @@ async function uploadToCloudinary(fileBuffer) {
 router.get("/", async (req, res) => {
   try {
     const {
-      search, // Pencarian berdasarkan nama atau SKU
-      minPrice, // Filter harga minimum
-      maxPrice, // Filter harga maksimum
-      color, // Filter berdasarkan warna
-      size, // Filter berdasarkan ukuran
-      sortBy = "createdAt", // Urutan default: waktu pembuatan
+      search, // Pencarian nama atau SKU
+      minPrice, // Harga minimum
+      maxPrice, // Harga maksimum
+      color, // Filter warna
+      size, // Filter ukuran
+      sortBy = "createdAt", // Sorting default: waktu pembuatan
       order = "desc", // Urutan default: descending
       page = 1, // Halaman default: 1
       limit = 10, // Batas item per halaman: 10
     } = req.query;
 
-    // Buat query awal
     let query = { isPublished: true };
 
-    // Pencarian berdasarkan nama atau SKU
+    // Pencarian nama atau SKU (case-insensitive)
     if (search) {
       query.$or = [
-        { name: { $regex: search, $options: "i" } }, // Case-insensitive
+        { name: { $regex: search, $options: "i" } },
         { sku: { $regex: search, $options: "i" } },
       ];
     }
@@ -100,7 +99,7 @@ router.get("/", async (req, res) => {
       if (maxPrice) query.price.$lte = Number(maxPrice);
     }
 
-    // Filter berdasarkan warna (case-insensitive)
+    // Filter warna (case-insensitive)
     if (color) {
       const colorArray = color.split(",");
       query["type.color"] = {
@@ -108,7 +107,7 @@ router.get("/", async (req, res) => {
       };
     }
 
-    // Filter berdasarkan ukuran (case-insensitive)
+    // Filter ukuran (case-insensitive)
     if (size) {
       const sizeArray = size.split(",");
       query["type.size"] = {
@@ -119,7 +118,7 @@ router.get("/", async (req, res) => {
     // Hitung total dokumen untuk pagination
     const total = await Product.countDocuments(query);
 
-    // Ambil produk dengan pagination, sorting, dan filtering
+    // Ambil produk dengan pagination dan sorting
     const products = await Product.find(query)
       .sort({ [sortBy]: order === "asc" ? 1 : -1 })
       .skip((page - 1) * limit)
