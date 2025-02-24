@@ -3,9 +3,7 @@ const User = require("../models/User");
 
 const auth = async (req, res, next) => {
   try {
-    console.log("Request Headers:", req.headers);
     const authHeader = req.header("Authorization");
-    console.log("Auth Header:", authHeader);
     if (!authHeader) {
       throw new Error("Token tidak ditemukan");
     }
