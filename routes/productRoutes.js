@@ -4,12 +4,49 @@ const Product = require("../models/Product");
 const { body, validationResult } = require("express-validator");
 const auth = require("../middleware/auth");
 const multer = require("multer");
-const streamifier = require("streamifier");
-const cloudinary = require("../config/cloudinary");
+const axios = require("axios");
+const FormData = require("form-data");
+const sharp = require("sharp");
 
-// Konfigurasi Multer untuk menyimpan file di memory
+// Konfigurasi Multer untuk menyimpan file di memory dengan filter gambar
 const storage = multer.memoryStorage();
-const upload = multer({ storage });
+const fileFilter = (req, file, cb) => {
+  // Daftar MIME type yang diizinkan (hanya gambar)
+  const allowedTypes = [
+    "image/jpeg",
+    "image/png",
+    "image/gif",
+    "image/webp",
+    "image/bmp",
+  ];
+
+  if (allowedTypes.includes(file.mimetype)) {
+    cb(null, true); // Terima file
+  } else {
+    cb(
+      new Error("Hanya file gambar yang diizinkan (jpeg, png, gif, webp, bmp)"),
+      false
+    ); // Tolak file
+  }
+};
+
+const upload = multer({
+  storage: storage,
+  fileFilter: fileFilter,
+  limits: { fileSize: 5 * 1024 * 1024 }, // Opsional: batas ukuran file 5MB sebelum kompresi
+});
+
+// Middleware untuk menangani error Multer
+const handleMulterError = (err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    // Error spesifik dari Multer (misalnya file terlalu besar)
+    return res.status(400).json({ message: err.message });
+  } else if (err) {
+    // Error dari fileFilter (misalnya tipe file tidak diizinkan)
+    return res.status(400).json({ message: err.message });
+  }
+  next(); // Lanjutkan jika tidak ada error
+};
 
 // Middleware untuk validasi input
 const validateProduct = [
@@ -49,42 +86,70 @@ const validateProduct = [
     .withMessage("isPublished must be a boolean"),
 ];
 
-// Helper function untuk upload gambar ke Cloudinary
-async function uploadToCloudinary(fileBuffer) {
-  return new Promise((resolve, reject) => {
-    const uploadStream = cloudinary.uploader.upload_stream(
-      {
-        folder: "ikan",
-        format: "jpeg",
-        transformation: [{ quality: "auto", fetch_format: "auto" }],
-      },
-      (error, result) => {
-        if (error) reject(error);
-        else resolve(result.secure_url);
-      }
-    );
-    streamifier.createReadStream(fileBuffer).pipe(uploadStream);
-  });
+// Helper function untuk mengompresi gambar ke ukuran < 1MB
+async function compressImage(fileBuffer) {
+  try {
+    let quality = 80; // Mulai dengan kualitas 80
+    let compressedBuffer = fileBuffer;
+    let fileSize = fileBuffer.length;
+
+    // Terus kompresi sampai ukuran < 1MB (1MB = 1048576 bytes)
+    while (fileSize > 1048576 && quality > 10) {
+      compressedBuffer = await sharp(fileBuffer)
+        .jpeg({ quality }) // Gunakan JPEG dengan kualitas tertentu
+        .toBuffer();
+      fileSize = compressedBuffer.length;
+      quality -= 10; // Kurangi kualitas secara bertahap
+    }
+
+    if (fileSize > 1048576) {
+      throw new Error(
+        "Gambar tidak bisa dikompresi di bawah 1MB dengan kualitas yang wajar"
+      );
+    }
+
+    return compressedBuffer;
+  } catch (err) {
+    throw new Error("Gagal mengompresi gambar: " + err.message);
+  }
+}
+
+// Helper function untuk upload gambar ke Uploadcare
+async function uploadToUploadcare(fileBuffer, fileName) {
+  const compressedBuffer = await compressImage(fileBuffer); // Kompresi dulu
+  const formData = new FormData();
+  formData.append("UPLOADCARE_PUB_KEY", process.env.UPLOADCARE_PUBLIC_KEY);
+  formData.append("UPLOADCARE_STORE", "auto");
+  formData.append("file", compressedBuffer, fileName);
+
+  const response = await axios.post(
+    "https://upload.uploadcare.com/base/",
+    formData,
+    {
+      headers: formData.getHeaders(),
+    }
+  );
+
+  return response.data.file;
 }
 
 // Get all published products with search and filter
 router.get("/", async (req, res) => {
   try {
     const {
-      search, // Pencarian nama atau SKU
-      minPrice, // Harga minimum
-      maxPrice, // Harga maksimum
-      color, // Filter warna
-      size, // Filter ukuran
-      sortBy = "createdAt", // Sorting default: waktu pembuatan
-      order = "desc", // Urutan default: descending
-      page = 1, // Halaman default: 1
-      limit = 10, // Batas item per halaman: 10
+      search,
+      minPrice,
+      maxPrice,
+      color,
+      size,
+      sortBy = "createdAt",
+      order = "desc",
+      page = 1,
+      limit = 10,
     } = req.query;
 
     let query = { isPublished: true };
 
-    // Pencarian nama atau SKU (case-insensitive)
     if (search) {
       query.$or = [
         { name: { $regex: search, $options: "i" } },
@@ -92,14 +157,12 @@ router.get("/", async (req, res) => {
       ];
     }
 
-    // Filter harga
     if (minPrice || maxPrice) {
       query.price = {};
       if (minPrice) query.price.$gte = Number(minPrice);
       if (maxPrice) query.price.$lte = Number(maxPrice);
     }
 
-    // Filter warna (case-insensitive)
     if (color) {
       const colorArray = color.split(",");
       query["type.color"] = {
@@ -107,7 +170,6 @@ router.get("/", async (req, res) => {
       };
     }
 
-    // Filter ukuran (case-insensitive)
     if (size) {
       const sizeArray = size.split(",");
       query["type.size"] = {
@@ -115,10 +177,8 @@ router.get("/", async (req, res) => {
       };
     }
 
-    // Hitung total dokumen untuk pagination
     const total = await Product.countDocuments(query);
 
-    // Ambil produk dengan pagination dan sorting
     const products = await Product.find(query)
       .sort({ [sortBy]: order === "asc" ? 1 : -1 })
       .skip((page - 1) * limit)
@@ -163,6 +223,7 @@ router.post(
   "/",
   auth,
   upload.single("image"),
+  handleMulterError, // Tangani error Multer di sini
   validateProduct,
   async (req, res) => {
     const errors = validationResult(req);
@@ -173,7 +234,11 @@ router.post(
     try {
       let imageUrl = null;
       if (req.file) {
-        imageUrl = await uploadToCloudinary(req.file.buffer);
+        const fileId = await uploadToUploadcare(
+          req.file.buffer,
+          req.file.originalname
+        );
+        imageUrl = `https://ucarecdn.com/${fileId}/`;
       }
 
       const newProduct = new Product({
@@ -199,6 +264,7 @@ router.put(
   "/:id",
   auth,
   upload.single("image"),
+  handleMulterError, // Tangani error Multer di sini
   validateProduct,
   async (req, res) => {
     try {
@@ -213,7 +279,11 @@ router.put(
 
       let imageUrl = product.image;
       if (req.file) {
-        imageUrl = await uploadToCloudinary(req.file.buffer);
+        const fileId = await uploadToUploadcare(
+          req.file.buffer,
+          req.file.originalname
+        );
+        imageUrl = `https://ucarecdn.com/${fileId}/`;
       }
 
       const updatedProduct = await Product.findByIdAndUpdate(
@@ -253,19 +323,6 @@ router.delete("/:id", auth, async (req, res) => {
   } catch (err) {
     res.status(500).json({
       message: "Failed to delete product",
-      error: err.message,
-    });
-  }
-});
-
-// Delete all products
-router.delete("/", async (req, res) => {
-  try {
-    await Product.deleteMany();
-    res.json({ message: "All products deleted" });
-  } catch (err) {
-    res.status(500).json({
-      message: "Failed to delete all products",
       error: err.message,
     });
   }
