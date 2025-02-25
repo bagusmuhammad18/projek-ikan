@@ -65,9 +65,13 @@ router.post(
       await user.save();
 
       // Generate JWT Token
-      const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
-        expiresIn: "7d",
-      });
+      const token = jwt.sign(
+        { id: user._id, role: user.role },
+        process.env.JWT_SECRET,
+        {
+          expiresIn: "7d",
+        }
+      );
 
       res.status(201).json({ user, token });
     } catch (err) {
@@ -107,9 +111,13 @@ router.post(
         return res.status(401).json({ message: "Email atau password salah" });
 
       // Generate Token
-      const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
-        expiresIn: "7d",
-      });
+      const token = jwt.sign(
+        { id: user._id, role: user.role },
+        process.env.JWT_SECRET,
+        {
+          expiresIn: "7d",
+        }
+      );
 
       res.json({ user, token });
     } catch (err) {
