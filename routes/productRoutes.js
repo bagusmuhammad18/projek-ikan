@@ -221,7 +221,14 @@ router.put(
       // Ambil URL gambar lama dari body (jika ada)
       let existingImageUrls = product.images || [];
       if (req.body.existingImages) {
-        existingImageUrls = JSON.parse(req.body.existingImages);
+        try {
+          existingImageUrls = JSON.parse(req.body.existingImages) || [];
+        } catch (parseError) {
+          console.error("Error parsing existingImages:", parseError);
+          return res
+            .status(400)
+            .json({ message: "Invalid existingImages format" });
+        }
         console.log("URL gambar lama dari frontend:", existingImageUrls);
       }
 
@@ -239,14 +246,39 @@ router.put(
         console.log("Gambar baru diunggah ke Uploadcare:", newImageUrls);
       }
 
+      // Parse dimensions dan type dengan pengecekan
+      let dimensions = product.dimensions || { height: 0, length: 0, width: 0 };
+      if (req.body.dimensions) {
+        try {
+          dimensions = JSON.parse(req.body.dimensions) || {
+            height: 0,
+            length: 0,
+            width: 0,
+          };
+        } catch (parseError) {
+          console.error("Error parsing dimensions:", parseError);
+          return res.status(400).json({ message: "Invalid dimensions format" });
+        }
+      }
+
+      let type = product.type || { color: [], size: [] };
+      if (req.body.type) {
+        try {
+          type = JSON.parse(req.body.type) || { color: [], size: [] };
+        } catch (parseError) {
+          console.error("Error parsing type:", parseError);
+          return res.status(400).json({ message: "Invalid type format" });
+        }
+      }
+
       const updatedProduct = await Product.findByIdAndUpdate(
         req.params.id,
         {
           ...req.body,
           images: imageUrls, // Update array images dengan gambar lama dan baru
           weight: req.body.weight || product.weight,
-          dimensions: JSON.parse(req.body.dimensions || "{}"),
-          type: JSON.parse(req.body.type || "{}"),
+          dimensions, // Gunakan dimensions yang sudah diparse
+          type, // Gunakan type yang sudah diparse
           isPublished: req.body.isPublished || product.isPublished,
         },
         { new: true }
