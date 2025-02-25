@@ -139,13 +139,14 @@ router.get("/", async (req, res) => {
 });
 
 // Get semua produk (admin only)
-router.get("/all", checkAdmin, async (req, res) => {
-  // Ganti auth dengan checkAdmin
+router.get("/:id", checkAdmin, async (req, res) => {
+  console.log("User role in GET request:", req.user.role); // Debugging
   try {
-    const products = await Product.find();
-    res.json(products);
+    const product = await Product.findById(req.params.id);
+    if (!product) return res.status(404).json({ message: "Product not found" });
+    res.json(product);
   } catch (err) {
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json({ message: "Server error", error: err.message });
   }
 });
 

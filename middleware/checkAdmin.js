@@ -12,6 +12,7 @@ const checkAdmin = (req, res, next) => {
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     req.user = decoded;
+    console.log("rolenya adalah", req.user.role);
 
     // Periksa apakah pengguna memiliki peran admin
     if (req.user.role !== "admin") {
