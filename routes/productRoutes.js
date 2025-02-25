@@ -3,6 +3,7 @@ const router = express.Router();
 const Product = require("../models/Product");
 const { body, validationResult } = require("express-validator");
 const auth = require("../middleware/auth");
+const checkAdmin = require("../middleware/checkAdmin"); // Impor middleware baru
 const multer = require("multer");
 const axios = require("axios");
 const FormData = require("form-data");
@@ -137,8 +138,9 @@ router.get("/", async (req, res) => {
   }
 });
 
-// Get semua produk (admin/seller)
-router.get("/all", auth, async (req, res) => {
+// Get semua produk (admin only)
+router.get("/all", checkAdmin, async (req, res) => {
+  // Ganti auth dengan checkAdmin
   try {
     const products = await Product.find();
     res.json(products);
@@ -147,8 +149,9 @@ router.get("/all", auth, async (req, res) => {
   }
 });
 
-// Get satu produk by ID
-router.get("/:id", async (req, res) => {
+// Get satu produk by ID (admin only)
+router.get("/:id", checkAdmin, async (req, res) => {
+  // Ganti auth dengan checkAdmin
   try {
     const product = await Product.findById(req.params.id);
     if (!product) return res.status(404).json({ message: "Product not found" });
@@ -158,10 +161,10 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-// Buat produk baru (multiple image support)
+// Buat produk baru (hanya admin)
 router.post(
   "/",
-  auth,
+  checkAdmin, // Ganti auth dengan checkAdmin
   upload.array("images", 5),
   handleMulterError,
   validateProduct,
@@ -185,7 +188,7 @@ router.post(
 
       const newProduct = new Product({
         ...req.body,
-        seller: req.user.id,
+        seller: req.user.id, // Tetap simpan seller untuk referensi, tetapi hanya admin yang bisa tambah
         images: imageUrls,
         isPublished: req.body.isPublished || false,
       });
@@ -200,10 +203,10 @@ router.post(
   }
 );
 
-// Update product
+// Update product (hanya admin)
 router.put(
   "/:id",
-  auth,
+  checkAdmin, // Ganti auth dengan checkAdmin, hapus pemeriksaan seller
   upload.array("images"), // Mendukung multiple images
   handleMulterError,
   validateProduct,
@@ -214,9 +217,10 @@ router.put(
         return res.status(404).json({ message: "Product not found" });
       }
 
-      if (product.seller.toString() !== req.user.id) {
-        return res.status(403).json({ message: "Unauthorized" });
-      }
+      // Hapus pemeriksaan seller
+      // if (product.seller.toString() !== req.user.id) {
+      //   return res.status(403).json({ message: "Unauthorized" });
+      // }
 
       // Ambil URL gambar lama dari body (jika ada)
       let existingImageUrls = product.images || [];
@@ -281,7 +285,7 @@ router.put(
         }
       }
 
-      let type = product.type || { color: [], size: [] };
+      let type = product.dimensions || { color: [], size: [] }; // Perbaiki typo: product.dimensions -> product.type
       if (req.body.type) {
         try {
           type = JSON.parse(req.body.type) || { color: [], size: [] };
@@ -316,15 +320,17 @@ router.put(
   }
 );
 
-// Delete produk
-router.delete("/:id", auth, async (req, res) => {
+// Delete produk (hanya admin)
+router.delete("/:id", checkAdmin, async (req, res) => {
+  // Ganti auth dengan checkAdmin, hapus pemeriksaan seller
   try {
     const product = await Product.findById(req.params.id);
     if (!product) return res.status(404).json({ message: "Product not found" });
 
-    if (product.seller.toString() !== req.user.id) {
-      return res.status(403).json({ message: "Unauthorized" });
-    }
+    // Hapus pemeriksaan seller
+    // if (product.seller.toString() !== req.user.id) {
+    //   return res.status(403).json({ message: "Unauthorized" });
+    // }
 
     await product.deleteOne();
     res.json({ message: "Product deleted" });
