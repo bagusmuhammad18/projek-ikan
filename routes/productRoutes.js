@@ -232,7 +232,26 @@ router.put(
         console.log("URL gambar lama dari frontend:", existingImageUrls);
       }
 
-      let imageUrls = [...existingImageUrls]; // Mulai dengan gambar lama
+      // Ambil daftar gambar yang dihapus dari body (jika ada)
+      let removedImageUrls = [];
+      if (req.body.removedImages) {
+        try {
+          removedImageUrls = JSON.parse(req.body.removedImages) || [];
+        } catch (parseError) {
+          console.error("Error parsing removedImages:", parseError);
+          return res
+            .status(400)
+            .json({ message: "Invalid removedImages format" });
+        }
+        console.log("Gambar yang dihapus dari frontend:", removedImageUrls);
+      }
+
+      // Hapus gambar yang ada dalam removedImages dari existingImageUrls
+      const filteredImageUrls = existingImageUrls.filter(
+        (url) => !removedImageUrls.includes(url)
+      );
+
+      let imageUrls = [...filteredImageUrls]; // Mulai dengan gambar lama yang belum dihapus
       if (req.files && req.files.length > 0) {
         console.log("File gambar baru diterima:", req.files);
         const uploadPromises = req.files.map((file) =>
@@ -275,10 +294,10 @@ router.put(
         req.params.id,
         {
           ...req.body,
-          images: imageUrls, // Update array images dengan gambar lama dan baru
+          images: imageUrls, // Update array images dengan gambar lama (tanpa yang dihapus) dan baru
           weight: req.body.weight || product.weight,
-          dimensions, // Gunakan dimensions yang sudah diparse
-          type, // Gunakan type yang sudah diparse
+          dimensions,
+          type,
           isPublished: req.body.isPublished || product.isPublished,
         },
         { new: true }
