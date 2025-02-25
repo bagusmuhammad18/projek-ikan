@@ -250,6 +250,7 @@ router.put(
       const filteredImageUrls = existingImageUrls.filter(
         (url) => !removedImageUrls.includes(url)
       );
+      console.log("Gambar yang tersisa setelah filtering:", filteredImageUrls);
 
       let imageUrls = [...filteredImageUrls]; // Mulai dengan gambar lama yang belum dihapus
       if (req.files && req.files.length > 0) {
@@ -303,6 +304,7 @@ router.put(
         { new: true }
       );
 
+      console.log("Produk diperbarui:", updatedProduct);
       res.json(updatedProduct);
     } catch (err) {
       console.error("Error di backend:", err);
