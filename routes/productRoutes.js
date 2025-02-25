@@ -200,46 +200,65 @@ router.post(
   }
 );
 
-// Update produk
+// Update product
 router.put(
   "/:id",
   auth,
-  upload.array("images", 5),
+  upload.array("images"), // Mendukung multiple images
   handleMulterError,
   validateProduct,
   async (req, res) => {
     try {
       const product = await Product.findById(req.params.id);
-      if (!product)
+      if (!product) {
         return res.status(404).json({ message: "Product not found" });
+      }
 
       if (product.seller.toString() !== req.user.id) {
         return res.status(403).json({ message: "Unauthorized" });
       }
 
-      let imageUrls = product.images || [];
+      // Ambil URL gambar lama dari body (jika ada)
+      let existingImageUrls = product.images || [];
+      if (req.body.existingImages) {
+        existingImageUrls = JSON.parse(req.body.existingImages);
+        console.log("URL gambar lama dari frontend:", existingImageUrls);
+      }
+
+      let imageUrls = [...existingImageUrls]; // Mulai dengan gambar lama
       if (req.files && req.files.length > 0) {
-        imageUrls = [];
-        for (const file of req.files) {
-          const fileId = await uploadToUploadcare(
-            file.buffer,
-            file.originalname
-          );
-          imageUrls.push(`https://ucarecdn.com/${fileId}/`);
-        }
+        console.log("File gambar baru diterima:", req.files);
+        const uploadPromises = req.files.map((file) =>
+          uploadToUploadcare(file.buffer, file.originalname)
+        );
+        const newFileIds = await Promise.all(uploadPromises);
+        const newImageUrls = newFileIds.map(
+          (fileId) => `https://ucarecdn.com/${fileId}/`
+        );
+        imageUrls = [...imageUrls, ...newImageUrls]; // Gabungkan gambar lama dan baru
+        console.log("Gambar baru diunggah ke Uploadcare:", newImageUrls);
       }
 
       const updatedProduct = await Product.findByIdAndUpdate(
         req.params.id,
-        { ...req.body, images: imageUrls },
+        {
+          ...req.body,
+          images: imageUrls, // Update array images dengan gambar lama dan baru
+          weight: req.body.weight || product.weight,
+          dimensions: JSON.parse(req.body.dimensions || "{}"),
+          type: JSON.parse(req.body.type || "{}"),
+          isPublished: req.body.isPublished || product.isPublished,
+        },
         { new: true }
       );
 
       res.json(updatedProduct);
     } catch (err) {
-      res
-        .status(500)
-        .json({ message: "Failed to update product", error: err.message });
+      console.error("Error di backend:", err);
+      res.status(500).json({
+        message: "Failed to update product",
+        error: err.message,
+      });
     }
   }
 );
