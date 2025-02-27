@@ -1,0 +1,273 @@
+openapi: 3.0.3
+info:
+  title: Cart API
+  description: API untuk mengelola keranjang belanja (menambah, memperbarui, dan menghapus item) di marketplace ikan.
+  version: 1.0.0
+  contact:
+    email: support@example.com
+
+servers:
+  - url: http://localhost:5000/api
+    description: Local development server
+  - url: https://iwak.onrender.com/api
+    description: Deployed server on Render
+
+paths:
+  /cart:
+    get:
+      tags:
+        - Cart
+      summary: Get user shopping cart
+      description: Mengambil keranjang belanja untuk pengguna yang sedang login.
+      responses:
+        "200":
+          description: Keranjang belanja berhasil diambil
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Cart"
+        "500":
+          description: Error server
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Failed to get cart"
+                  error:
+                    type: string
+                    example: "Error message"
+    post:
+      tags:
+        - Cart
+      summary: Add item to cart
+      description: Menambahkan item ke keranjang belanja pengguna yang sedang login.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                productId:
+                  type: string
+                  example: "60d5f8c3b1f2a6a8c0e4b2f3"
+                quantity:
+                  type: integer
+                  minimum: 1
+                  example: 2
+              required:
+                - productId
+                - quantity
+      responses:
+        "200":
+          description: Item berhasil ditambahkan ke keranjang
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Cart"
+        "400":
+          description: Validasi gagal atau stok tidak mencukupi
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errors:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        msg:
+                          type: string
+                          example: "Product ID is required"
+                  message:
+                    type: string
+                    example: "Quantity exceeds available stock"
+        "404":
+          description: Produk tidak ditemukan
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Product not found"
+        "500":
+          description: Error server
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Failed to add item to cart"
+    put:
+      tags:
+        - Cart
+      summary: Update item quantity in cart
+      description: Memperbarui jumlah item tertentu di keranjang pengguna yang sedang login.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                productId:
+                  type: string
+                  example: "60d5f8c3b1f2a6a8c0e4b2f3"
+                quantity:
+                  type: integer
+                  minimum: 1
+                  example: 3
+              required:
+                - productId
+                - quantity
+      responses:
+        "200":
+          description: Jumlah item berhasil diperbarui
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Cart"
+        "400":
+          description: Validasi gagal atau stok tidak mencukupi
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errors:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        msg:
+                          type: string
+                          example: "Product ID is required"
+                  message:
+                    type: string
+                    example: "Quantity exceeds available stock"
+        "404":
+          description: Keranjang atau produk tidak ditemukan
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Cart not found"
+        "500":
+          description: Error server
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Failed to update cart"
+    delete:
+      tags:
+        - Cart
+      summary: Clear cart
+      description: Menghapus semua item dari keranjang pengguna yang sedang login.
+      responses:
+        "200":
+          description: Keranjang berhasil dikosongkan
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Cart cleared"
+        "500":
+          description: Error server
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Failed to clear cart"
+
+  /cart/{productId}:
+    delete:
+      tags:
+        - Cart
+      summary: Remove item from cart
+      description: Menghapus item tertentu dari keranjang berdasarkan productId.
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          schema:
+            type: string
+            example: "60d5f8c3b1f2a6a8c0e4b2f3"
+      responses:
+        "200":
+          description: Item berhasil dihapus dari keranjang
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Cart"
+        "404":
+          description: Keranjang tidak ditemukan
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Cart not found"
+        "500":
+          description: Error server
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Failed to remove item from cart"
+
+components:
+  schemas:
+    Cart:
+      type: object
+      properties:
+        _id:
+          type: string
+          example: "60d5f8c3b1f2a6a8c0e4b2f4"
+        user:
+          type: string
+          example: "60d5f8c3b1f2a6a8c0e4b2f3"
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              product:
+                type: string
+                example: "60d5f8c3b1f2a6a8c0e4b2f3"
+              quantity:
+                type: integer
+                minimum: 1
+                example: 2
+        updatedAt:
+          type: string
+          format: date-time
+          example: "2023-01-01T12:00:00Z"
+      required:
+        - user
+        - items

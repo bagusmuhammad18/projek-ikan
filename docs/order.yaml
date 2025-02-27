@@ -1,0 +1,323 @@
+openapi: 3.0.3
+info:
+  title: Order API
+  description: API untuk mengelola pesanan (checkout, melihat, dan memperbarui status) di marketplace ikan.
+  version: 1.0.0
+  contact:
+    email: support@example.com
+
+servers:
+  - url: http://localhost:5000/api
+    description: Local development server
+  - url: https://iwak.onrender.com/api
+    description: Deployed server on Render
+
+paths:
+  /orders:
+    post:
+      tags:
+        - Orders
+      summary: Checkout from shopping cart to order
+      description: Melakukan checkout dari keranjang belanja ke pesanan, memeriksa stok, dan mengurangi stok produk.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                shippingAddress:
+                  type: string
+                  example: "Jl. Ikan Segar No. 123, Jakarta"
+              required:
+                - shippingAddress
+      responses:
+        "201":
+          description: Pesanan berhasil dibuat
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+        "400":
+          description: Validasi gagal, keranjang kosong, atau stok tidak mencukupi
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errors:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        msg:
+                          type: string
+                          example: "Shipping address is required"
+                  message:
+                    type: string
+                    example: "Cart is empty"
+        "500":
+          description: Error server
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Failed to place order"
+                  error:
+                    type: string
+                    example: "Error message"
+    get:
+      tags:
+        - Orders
+      summary: Get user orders
+      description: Melihat daftar pesanan pengguna yang sedang login, diurutkan berdasarkan waktu pembuatan (terbaru dulu).
+      responses:
+        "200":
+          description: Daftar pesanan berhasil diambil
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Order"
+        "500":
+          description: Error server
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Failed to retrieve orders"
+                  error:
+                    type: string
+                    example: "Error message"
+
+  /orders/{id}:
+    get:
+      tags:
+        - Orders
+      summary: Get order details
+      description: Melihat detail pesanan tertentu berdasarkan ID untuk pengguna yang sedang login.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            example: "60d5f8c3b1f2a6a8c0e4b2f5"
+      responses:
+        "200":
+          description: Detail pesanan berhasil diambil
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+        "404":
+          description: Pesanan tidak ditemukan
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Order not found"
+        "500":
+          description: Error server
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Failed to retrieve order"
+                  error:
+                    type: string
+                    example: "Error message"
+
+  /orders/{id}/status:
+    put:
+      tags:
+        - Orders
+      summary: Update order status
+      description: |
+        Memperbarui status pesanan. Status valid:
+        - Pending: Order baru dibuat, belum dibayar
+        - Paid: Sudah dibayar
+        - Processing: Penjual sedang memproses pesanan
+        - Shipped: Pesanan dalam pengiriman
+        - Delivered: Pesanan sudah diterima pembeli
+        - Cancelled: Pesanan dibatalkan
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            example: "60d5f8c3b1f2a6a8c0e4b2f5"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum:
+                    [Pending, Paid, Processing, Shipped, Delivered, Cancelled]
+                  example: "Shipped"
+              required:
+                - status
+      responses:
+        "200":
+          description: Status pesanan berhasil diperbarui
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+        "400":
+          description: Status tidak valid
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Invalid status"
+        "404":
+          description: Pesanan tidak ditemukan
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Order not found"
+        "500":
+          description: Error server
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Failed to update order status"
+                  error:
+                    type: string
+                    example: "Error message"
+
+  /orders/{id}/pay:
+    put:
+      tags:
+        - Orders
+      summary: Simulate order payment
+      description: Simulasi pembayaran pesanan, mengubah status dari 'Pending' ke 'Paid' (hanya untuk testing).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            example: "60d5f8c3b1f2a6a8c0e4b2f5"
+      responses:
+        "200":
+          description: Pembayaran berhasil disimulasikan
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Pembayaran berhasil (simulasi)"
+                  order:
+                    $ref: "#/components/schemas/Order"
+        "400":
+          description: Pesanan tidak bisa diproses
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Order sudah dibayar atau tidak bisa diproses"
+        "404":
+          description: Pesanan tidak ditemukan
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Order not found"
+        "500":
+          description: Error server
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Failed to simulate payment"
+                  error:
+                    type: string
+                    example: "Error message"
+
+components:
+  schemas:
+    Order:
+      type: object
+      properties:
+        _id:
+          type: string
+          example: "60d5f8c3b1f2a6a8c0e4b2f5"
+        user:
+          type: string
+          example: "60d5f8c3b1f2a6a8c0e4b2f3"
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              product:
+                type: string
+                example: "60d5f8c3b1f2a6a8c0e4b2f3"
+              quantity:
+                type: integer
+                minimum: 1
+                example: 2
+              price:
+                type: number
+                example: 50
+        totalAmount:
+          type: number
+          example: 100
+        shippingAddress:
+          type: string
+          example: "Jl. Ikan Segar No. 123, Jakarta"
+        status:
+          type: string
+          enum: [Pending, Paid, Processing, Shipped, Delivered, Cancelled]
+          example: "Pending"
+        createdAt:
+          type: string
+          format: date-time
+          example: "2023-01-01T12:00:00Z"
+      required:
+        - user
+        - items
+        - totalAmount
+        - shippingAddress
