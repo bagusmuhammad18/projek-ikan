@@ -4,10 +4,14 @@ const bodyParser = require("body-parser");
 const path = require("path");
 require("dotenv").config();
 
+// Import routes
 const productRoutes = require("./routes/productRoutes");
 const userRoutes = require("./routes/userRoutes");
 const cartRoutes = require("./routes/cartRoutes");
 const orderRoutes = require("./routes/orderRoutes");
+
+// Import Swagger setup
+const swaggerDocs = require("./docs/swagger");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -42,6 +46,9 @@ app.use((req, res, next) => {
 // Middleware lainnya
 app.use(bodyParser.json());
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
+// Panggil Swagger docs dari file terpisah
+swaggerDocs(app);
 
 // Routes
 app.use("/api/products", productRoutes);

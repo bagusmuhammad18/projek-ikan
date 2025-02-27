@@ -1,0 +1,554 @@
+openapi: 3.0.3
+info:
+  title: Product API
+  description: API untuk mengelola produk (mencari, membuat, memperbarui, dan menghapus) di marketplace ikan.
+  version: 1.0.0
+  contact:
+    email: support@example.com
+
+servers:
+  - url: http://localhost:5000/api
+    description: Local development server
+  - url: https://iwak.onrender.com/api
+    description: Deployed server on Render
+
+paths:
+  /products/:
+    get:
+      tags:
+        - Products
+      summary: Get all products with filters, sorting, and pagination
+      description: Mengambil daftar produk yang dipublikasikan dengan opsi filter, pengurutan, dan paginasi.
+      parameters:
+        - name: search
+          in: query
+          description: Pencarian berdasarkan nama produk (case-insensitive)
+          required: false
+          schema:
+            type: string
+            example: "ikan"
+        - name: minPrice
+          in: query
+          description: Harga minimum
+          required: false
+          schema:
+            type: number
+            example: 10
+        - name: maxPrice
+          in: query
+          description: Harga maksimum
+          required: false
+          schema:
+            type: number
+            example: 100
+        - name: color
+          in: query
+          description: Filter berdasarkan warna (case-insensitive, single atau multiple)
+          required: false
+          schema:
+            type: array
+            items:
+              type: string
+            example: ["merah", "biru"]
+        - name: size
+          in: query
+          description: Filter berdasarkan ukuran (case-insensitive, single atau multiple)
+          required: false
+          schema:
+            type: array
+            items:
+              type: string
+            example: ["M", "L"]
+        - name: sortBy
+          in: query
+          description: Field untuk pengurutan (misalnya price, createdAt)
+          required: false
+          schema:
+            type: string
+            example: "price"
+        - name: sortOrder
+          in: query
+          description: Arah pengurutan (asc atau desc)
+          required: false
+          schema:
+            type: string
+            enum: [asc, desc]
+            example: "asc"
+        - name: page
+          in: query
+          description: Nomor halaman
+          required: false
+          schema:
+            type: integer
+            default: 1
+            example: 1
+        - name: limit
+          in: query
+          description: Jumlah item per halaman
+          required: false
+          schema:
+            type: integer
+            default: 10
+            example: 10
+      responses:
+        "200":
+          description: Daftar produk berhasil diambil
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  products:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Product"
+                  pagination:
+                    type: object
+                    properties:
+                      currentPage:
+                        type: integer
+                        example: 1
+                      totalPages:
+                        type: integer
+                        example: 5
+                      totalItems:
+                        type: integer
+                        example: 50
+                      itemsPerPage:
+                        type: integer
+                        example: 10
+        "500":
+          description: Error server
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Server error"
+                  error:
+                    type: string
+                    example: "Error message"
+    post:
+      tags:
+        - Products
+      summary: Create a new product
+      description: Membuat produk baru (hanya untuk admin).
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                sku:
+                  type: string
+                  example: "IKN001"
+                name:
+                  type: string
+                  example: "Ikan Nila"
+                description:
+                  type: string
+                  example: "Ikan segar berkualitas tinggi"
+                price:
+                  type: number
+                  example: 50
+                stock:
+                  type: number
+                  example: 100
+                discount:
+                  type: number
+                  example: 10
+                weight:
+                  type: number
+                  example: 1.5
+                dimensions:
+                  type: object
+                  properties:
+                    height:
+                      type: number
+                      example: 10
+                    length:
+                      type: number
+                      example: 20
+                    width:
+                      type: number
+                      example: 5
+                type:
+                  type: object
+                  properties:
+                    color:
+                      type: array
+                      items:
+                        type: string
+                      example: ["merah", "hijau"]
+                    size:
+                      type: array
+                      items:
+                        type: string
+                      example: ["M", "L"]
+                isPublished:
+                  type: boolean
+                  example: true
+              required:
+                - sku
+                - name
+                - description
+                - price
+                - stock
+      responses:
+        "201":
+          description: Produk berhasil dibuat
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+        "400":
+          description: Validasi gagal
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errors:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        msg:
+                          type: string
+                          example: "SKU is required"
+        "500":
+          description: Error server
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Failed to create product"
+
+  /products/all:
+    get:
+      tags:
+        - Products
+      summary: Get all products (without publishing filter)
+      description: Mengambil semua produk tanpa memfilter berdasarkan isPublished.
+      responses:
+        "200":
+          description: Daftar semua produk berhasil diambil
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Product"
+        "500":
+          description: Error server
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Server error"
+
+  /products/{id}:
+    get:
+      tags:
+        - Products
+      summary: Get a product by ID
+      description: Mengambil detail produk berdasarkan ID.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            example: "60d5f8c3b1f2a6a8c0e4b2f3"
+      responses:
+        "200":
+          description: Detail produk berhasil diambil
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+        "404":
+          description: Produk tidak ditemukan
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Product not found"
+        "500":
+          description: Error server
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Server error"
+                  error:
+                    type: string
+                    example: "Error message"
+    put:
+      tags:
+        - Products
+      summary: Update a product
+      description: Memperbarui produk berdasarkan ID (hanya untuk admin).
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            example: "60d5f8c3b1f2a6a8c0e4b2f3"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                sku:
+                  type: string
+                  example: "IKN001"
+                name:
+                  type: string
+                  example: "Ikan Nila"
+                description:
+                  type: string
+                  example: "Ikan segar berkualitas tinggi"
+                price:
+                  type: number
+                  example: 50
+                stock:
+                  type: number
+                  example: 100
+                discount:
+                  type: number
+                  example: 10
+                weight:
+                  type: number
+                  example: 1.5
+                dimensions:
+                  type: object
+                  properties:
+                    height:
+                      type: number
+                      example: 10
+                    length:
+                      type: number
+                      example: 20
+                    width:
+                      type: number
+                      example: 5
+                type:
+                  type: object
+                  properties:
+                    color:
+                      type: array
+                      items:
+                        type: string
+                      example: ["merah", "hijau"]
+                    size:
+                      type: array
+                      items:
+                        type: string
+                      example: ["M", "L"]
+                isPublished:
+                  type: boolean
+                  example: true
+                existingImages:
+                  type: array
+                  items:
+                    type: string
+                  example: ["https://ucarecdn.com/abc123/..."]
+                removedImages:
+                  type: array
+                  items:
+                    type: string
+                  example: ["https://ucarecdn.com/xyz789/..."]
+              required: false
+      responses:
+        "200":
+          description: Produk berhasil diperbarui
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+        "404":
+          description: Produk tidak ditemukan
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Product not found"
+        "400":
+          description: Validasi gagal
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errors:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        msg:
+                          type: string
+                          example: "SKU is required"
+        "500":
+          description: Error server
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Failed to update product"
+    delete:
+      tags:
+        - Products
+      summary: Delete a product
+      description: Menghapus produk berdasarkan ID (hanya untuk admin).
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            example: "60d5f8c3b1f2a6a8c0e4b2f3"
+      responses:
+        "200":
+          description: Produk berhasil dihapus
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Product deleted"
+        "404":
+          description: Produk tidak ditemukan
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Product not found"
+        "500":
+          description: Error server
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Failed to delete product"
+
+components:
+  schemas:
+    Product:
+      type: object
+      properties:
+        _id:
+          type: string
+          example: "60d5f8c3b1f2a6a8c0e4b2f3"
+        sku:
+          type: string
+          example: "IKN001"
+        name:
+          type: string
+          example: "Ikan Nila"
+        description:
+          type: string
+          example: "Ikan segar berkualitas tinggi"
+        price:
+          type: number
+          example: 50
+        seller:
+          type: string
+          example: "60d5f8c3b1f2a6a8c0e4b2f1"
+        stock:
+          type: number
+          example: 100
+        images:
+          type: array
+          items:
+            type: string
+          example: ["https://ucarecdn.com/abc123/..."]
+        discount:
+          type: number
+          example: 10
+        weight:
+          type: number
+          example: 1.5
+        dimensions:
+          type: object
+          properties:
+            height:
+              type: number
+              example: 10
+            length:
+              type: number
+              example: 20
+            width:
+              type: number
+              example: 5
+        type:
+          type: object
+          properties:
+            color:
+              type: array
+              items:
+                type: string
+              example: ["merah", "hijau"]
+            size:
+              type: array
+              items:
+                type: string
+              example: ["M", "L"]
+        isPublished:
+          type: boolean
+          example: true
+        createdAt:
+          type: string
+          format: date-time
+          example: "2023-01-01T00:00:00Z"
+      required:
+        - sku
+        - name
+        - description
+        - price
+        - seller
+        - stock
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

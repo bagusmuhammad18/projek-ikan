@@ -3,7 +3,7 @@ const router = express.Router();
 const Product = require("../models/Product");
 const { body, validationResult } = require("express-validator");
 const auth = require("../middleware/auth");
-const checkAdmin = require("../middleware/checkAdmin"); // Impor middleware baru
+const checkAdmin = require("../middleware/checkAdmin");
 const multer = require("multer");
 const axios = require("axios");
 const FormData = require("form-data");
@@ -128,31 +128,99 @@ async function uploadToUploadcare(fileBuffer, fileName) {
   return response.data.file;
 }
 
-// Get semua produk (published)
+// Get semua produk dengan filter, sorting, dan pagination (tanpa admin)
 router.get("/", async (req, res) => {
   try {
-    const products = await Product.find({ isPublished: true });
+    const {
+      search,
+      minPrice,
+      maxPrice,
+      color,
+      size,
+      sortBy,
+      sortOrder,
+      page = 1,
+      limit = 10,
+    } = req.query;
+
+    let query = { isPublished: true };
+
+    // Search by name
+    if (search) {
+      query.name = { $regex: search, $options: "i" };
+    }
+
+    // Price filter
+    if (minPrice || maxPrice) {
+      query.price = {};
+      if (minPrice) query.price.$gte = Number(minPrice);
+      if (maxPrice) query.price.$lte = Number(maxPrice);
+    }
+
+    // Color filter (case-insensitive with $or and $regex)
+    if (color) {
+      const colors = Array.isArray(color) ? color : [color];
+      const lowerCaseColors = colors.map((c) => c.toLowerCase());
+      query.$or = lowerCaseColors.map((c) => ({
+        "type.color": { $regex: `^${c}$`, $options: "i" },
+      }));
+    }
+
+    // Size filter (case-insensitive with $or and $regex)
+    if (size) {
+      const sizes = Array.isArray(size) ? size : [size];
+      const lowerCaseSizes = sizes.map((s) => s.toLowerCase());
+      query.$or = lowerCaseSizes.map((s) => ({
+        "type.size": { $regex: `^${s}$`, $options: "i" },
+      }));
+    }
+
+    const pageNumber = Math.max(1, Number(page));
+    const limitNumber = Math.max(1, Math.min(100, Number(limit)));
+    const skip = (pageNumber - 1) * limitNumber;
+
+    const sortOptions = {};
+    if (sortBy) {
+      sortOptions[sortBy] = sortOrder === "desc" ? -1 : 1;
+    } else {
+      sortOptions.createdAt = -1;
+    }
+
+    const products = await Product.find(query)
+      .sort(sortOptions)
+      .skip(skip)
+      .limit(limitNumber);
+
+    const total = await Product.countDocuments(query);
+    const totalPages = Math.ceil(total / limitNumber);
+
+    res.json({
+      products,
+      pagination: {
+        currentPage: pageNumber,
+        totalPages,
+        totalItems: total,
+        itemsPerPage: limitNumber,
+      },
+    });
+  } catch (err) {
+    console.error("Server Error:", err.message);
+    res.status(500).json({ message: "Server error", error: err.message });
+  }
+});
+
+// Get semua produk (tanpa admin)
+router.get("/all", async (req, res) => {
+  try {
+    const products = await Product.find();
     res.json(products);
   } catch (err) {
-    res.status(500).json({ message: "Server error", error: err.message });
+    res.status(500).json({ message: "Server error" });
   }
 });
 
-// Get semua produk (admin only)
-router.get("/:id", checkAdmin, async (req, res) => {
-  console.log("User role in GET request:", req.user.role); // Debugging
-  try {
-    const product = await Product.findById(req.params.id);
-    if (!product) return res.status(404).json({ message: "Product not found" });
-    res.json(product);
-  } catch (err) {
-    res.status(500).json({ message: "Server error", error: err.message });
-  }
-});
-
-// Get satu produk by ID (admin only)
-router.get("/:id", checkAdmin, async (req, res) => {
-  // Ganti auth dengan checkAdmin
+// Get satu produk by ID (tanpa admin)
+router.get("/:id", async (req, res) => {
   try {
     const product = await Product.findById(req.params.id);
     if (!product) return res.status(404).json({ message: "Product not found" });
@@ -165,7 +233,7 @@ router.get("/:id", checkAdmin, async (req, res) => {
 // Buat produk baru (hanya admin)
 router.post(
   "/",
-  checkAdmin, // Ganti auth dengan checkAdmin
+  checkAdmin,
   upload.array("images", 5),
   handleMulterError,
   validateProduct,
@@ -189,7 +257,7 @@ router.post(
 
       const newProduct = new Product({
         ...req.body,
-        seller: req.user.id, // Tetap simpan seller untuk referensi, tetapi hanya admin yang bisa tambah
+        seller: req.user.id,
         images: imageUrls,
         isPublished: req.body.isPublished || false,
       });
@@ -207,8 +275,8 @@ router.post(
 // Update product (hanya admin)
 router.put(
   "/:id",
-  checkAdmin, // Ganti auth dengan checkAdmin, hapus pemeriksaan seller
-  upload.array("images"), // Mendukung multiple images
+  checkAdmin,
+  upload.array("images"),
   handleMulterError,
   validateProduct,
   async (req, res) => {
@@ -218,12 +286,6 @@ router.put(
         return res.status(404).json({ message: "Product not found" });
       }
 
-      // Hapus pemeriksaan seller
-      // if (product.seller.toString() !== req.user.id) {
-      //   return res.status(403).json({ message: "Unauthorized" });
-      // }
-
-      // Ambil URL gambar lama dari body (jika ada)
       let existingImageUrls = product.images || [];
       if (req.body.existingImages) {
         try {
@@ -234,10 +296,8 @@ router.put(
             .status(400)
             .json({ message: "Invalid existingImages format" });
         }
-        console.log("URL gambar lama dari frontend:", existingImageUrls);
       }
 
-      // Ambil daftar gambar yang dihapus dari body (jika ada)
       let removedImageUrls = [];
       if (req.body.removedImages) {
         try {
@@ -248,18 +308,14 @@ router.put(
             .status(400)
             .json({ message: "Invalid removedImages format" });
         }
-        console.log("Gambar yang dihapus dari frontend:", removedImageUrls);
       }
 
-      // Hapus gambar yang ada dalam removedImages dari existingImageUrls
       const filteredImageUrls = existingImageUrls.filter(
         (url) => !removedImageUrls.includes(url)
       );
-      console.log("Gambar yang tersisa setelah filtering:", filteredImageUrls);
 
-      let imageUrls = [...filteredImageUrls]; // Mulai dengan gambar lama yang belum dihapus
+      let imageUrls = [...filteredImageUrls];
       if (req.files && req.files.length > 0) {
-        console.log("File gambar baru diterima:", req.files);
         const uploadPromises = req.files.map((file) =>
           uploadToUploadcare(file.buffer, file.originalname)
         );
@@ -267,11 +323,9 @@ router.put(
         const newImageUrls = newFileIds.map(
           (fileId) => `https://ucarecdn.com/${fileId}/`
         );
-        imageUrls = [...imageUrls, ...newImageUrls]; // Gabungkan gambar lama dan baru
-        console.log("Gambar baru diunggah ke Uploadcare:", newImageUrls);
+        imageUrls = [...imageUrls, ...newImageUrls];
       }
 
-      // Parse dimensions dan type dengan pengecekan
       let dimensions = product.dimensions || { height: 0, length: 0, width: 0 };
       if (req.body.dimensions) {
         try {
@@ -286,7 +340,7 @@ router.put(
         }
       }
 
-      let type = product.dimensions || { color: [], size: [] }; // Perbaiki typo: product.dimensions -> product.type
+      let type = product.type || { color: [], size: [] };
       if (req.body.type) {
         try {
           type = JSON.parse(req.body.type) || { color: [], size: [] };
@@ -300,7 +354,7 @@ router.put(
         req.params.id,
         {
           ...req.body,
-          images: imageUrls, // Update array images dengan gambar lama (tanpa yang dihapus) dan baru
+          images: imageUrls,
           weight: req.body.weight || product.weight,
           dimensions,
           type,
@@ -309,10 +363,8 @@ router.put(
         { new: true }
       );
 
-      console.log("Produk diperbarui:", updatedProduct);
       res.json(updatedProduct);
     } catch (err) {
-      console.error("Error di backend:", err);
       res.status(500).json({
         message: "Failed to update product",
         error: err.message,
@@ -323,15 +375,9 @@ router.put(
 
 // Delete produk (hanya admin)
 router.delete("/:id", checkAdmin, async (req, res) => {
-  // Ganti auth dengan checkAdmin, hapus pemeriksaan seller
   try {
     const product = await Product.findById(req.params.id);
     if (!product) return res.status(404).json({ message: "Product not found" });
-
-    // Hapus pemeriksaan seller
-    // if (product.seller.toString() !== req.user.id) {
-    //   return res.status(403).json({ message: "Unauthorized" });
-    // }
 
     await product.deleteOne();
     res.json({ message: "Product deleted" });
