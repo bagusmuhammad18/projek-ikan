@@ -259,7 +259,8 @@ router.post(
         ...req.body,
         seller: req.user.id,
         images: imageUrls,
-        isPublished: req.body.isPublished || false,
+        isPublished:
+          req.body.isPublished !== undefined ? req.body.isPublished : true,
       });
 
       await newProduct.save();
