@@ -140,7 +140,7 @@ router.get("/", async (req, res) => {
       sortBy,
       sortOrder,
       page = 1,
-      limit = 10,
+      limit = 999999,
     } = req.query;
 
     let query = { isPublished: true };
