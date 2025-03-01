@@ -4,6 +4,7 @@ const Cart = require("../models/Cart");
 const Product = require("../models/Product");
 const auth = require("../middleware/auth");
 const { body, validationResult } = require("express-validator");
+const mongoose = require("mongoose");
 
 /**
  * GET /api/cart
@@ -45,7 +46,14 @@ router.post(
 
     try {
       const { productId, quantity } = req.body;
-      const product = await Product.findById(productId);
+
+      // Validasi dan konversi productId ke ObjectId
+      if (!mongoose.Types.ObjectId.isValid(productId)) {
+        return res.status(404).json({ message: "Product not found" });
+      }
+      const productObjectId = new mongoose.Types.ObjectId(productId);
+
+      const product = await Product.findById(productObjectId);
       if (!product)
         return res.status(404).json({ message: "Product not found" });
 
@@ -67,13 +75,14 @@ router.post(
           return res
             .status(400)
             .json({ message: "Quantity exceeds available stock" });
-        cart.items.push({ product: productId, quantity });
+        cart.items.push({ product: productObjectId, quantity });
       }
 
       cart.updatedAt = new Date();
       await cart.save();
       res.json(cart);
     } catch (err) {
+      console.error("Error in POST /api/cart:", err); // Logging untuk debug
       res
         .status(500)
         .json({ message: "Failed to add item to cart", error: err.message });

@@ -2,6 +2,11 @@ const swaggerJsdoc = require("swagger-jsdoc");
 const swaggerUi = require("swagger-ui-express");
 const path = require("path");
 
+const swaggerUrlLocal =
+  process.env.LOCAL_SWAGGER_URL || "http://localhost:5000/api-docs";
+const swaggerUrlProd =
+  process.env.PROD_SWAGGER_URL || "https://iwak.onrender.com/api-docs";
+
 const options = {
   definition: {
     openapi: "3.0.0",
@@ -42,9 +47,11 @@ const swaggerSpec = swaggerJsdoc(options);
 
 const swaggerDocs = (app) => {
   app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
-  console.log(
-    "Swagger docs tersedia di: http://localhost:5000/api-docs dan https://iwak.onrender.com/api-docs"
-  );
+  if (process.env.NODE_ENV !== "test") {
+    console.log(
+      `Swagger docs tersedia di: ${swaggerUrlLocal} (Local) dan ${swaggerUrlProd} (Production)`
+    );
+  }
 };
 
 module.exports = swaggerDocs;

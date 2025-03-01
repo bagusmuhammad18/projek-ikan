@@ -47,7 +47,7 @@ app.use((req, res, next) => {
 app.use(bodyParser.json());
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-// Panggil Swagger docs dari file terpisah
+// Panggil Swagger docs
 swaggerDocs(app);
 
 // Routes
@@ -56,18 +56,29 @@ app.use("/api/users", userRoutes);
 app.use("/api/cart", cartRoutes);
 app.use("/api/orders", orderRoutes);
 
-// Koneksi ke MongoDB
-mongoose
-  .connect(process.env.MONGODB_URI)
-  .then(() => console.log("Connected to MongoDB"))
-  .catch((err) => console.error("MongoDB connection error:", err));
+// Fungsi untuk koneksi MongoDB
+const connectDB = async () => {
+  try {
+    await mongoose.connect(process.env.MONGODB_URI);
+    console.log("Connected to MongoDB");
+  } catch (err) {
+    console.error("MongoDB connection error:", err);
+    process.exit(1);
+  }
+};
 
 // Test route
 app.get("/", (req, res) => {
   res.send("Backend Marketplace is running!");
 });
 
-// Jalankan server
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-});
+// Ekspor app untuk testing
+module.exports = app;
+
+// Jalankan server hanya jika file ini dijalankan langsung (bukan saat testing)
+if (require.main === module) {
+  connectDB();
+  app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+  });
+}
