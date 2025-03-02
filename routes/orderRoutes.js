@@ -6,6 +6,16 @@ const Product = require("../models/Product");
 const auth = require("../middleware/auth");
 const { body, validationResult } = require("express-validator");
 
+// Helper untuk menghitung harga setelah diskon
+const calculateDiscountedPrice = (price, discount) => {
+  if (!discount || discount <= 0 || discount > 100) return price;
+  return price - (price * discount) / 100;
+};
+
+/**
+ * POST /api/orders
+ * Checkout dari shopping cart ke order dengan diskon.
+ */
 router.post(
   "/",
   auth,
@@ -28,6 +38,7 @@ router.post(
         return res.status(400).json({ message: "Cart is empty" });
       }
 
+      // Periksa stok
       for (const item of cart.items) {
         if (item.quantity > item.product.stock) {
           return res.status(400).json({
@@ -36,23 +47,35 @@ router.post(
         }
       }
 
-      const orderItems = cart.items.map((item) => ({
-        product: item.product._id,
-        quantity: item.quantity,
-        price: item.product.price,
-      }));
+      // Buat order items dengan harga setelah diskon
+      const orderItems = cart.items.map((item) => {
+        const discountedPrice = calculateDiscountedPrice(
+          item.product.price,
+          item.product.discount
+        );
+        return {
+          product: item.product._id,
+          quantity: item.quantity,
+          price: item.product.price, // Harga asli
+          discount: item.product.discount || 0, // Persentase diskon
+          discountedPrice: discountedPrice, // Harga setelah diskon
+        };
+      });
 
+      // Hitung total berdasarkan harga setelah diskon
       const totalAmount = orderItems.reduce(
-        (sum, item) => sum + item.quantity * item.price,
+        (sum, item) => sum + item.quantity * item.discountedPrice,
         0
       );
 
+      // Kurangi stok produk
       for (const item of cart.items) {
         const product = await Product.findById(item.product._id);
         product.stock -= item.quantity;
         await product.save();
       }
 
+      // Buat order baru
       const newOrder = new Order({
         user: req.user.id,
         items: orderItems,
@@ -73,11 +96,15 @@ router.post(
   }
 );
 
+/**
+ * GET /api/orders
+ * Mengambil daftar order pengguna dengan diskon
+ */
 router.get("/", auth, async (req, res) => {
   try {
     const orders = await Order.find({ user: req.user.id })
       .populate("items.product")
-      .populate("user", "name phoneNumber") // Populate nama dan nomor telepon
+      .populate("user", "name phoneNumber")
       .sort({ createdAt: -1 });
     res.json(orders);
   } catch (err) {
@@ -87,11 +114,15 @@ router.get("/", auth, async (req, res) => {
   }
 });
 
+/**
+ * GET /api/orders/:id
+ * Mengambil detail order tertentu dengan diskon
+ */
 router.get("/:id", auth, async (req, res) => {
   try {
     const order = await Order.findById(req.params.id)
       .populate("items.product")
-      .populate("user", "name phoneNumber"); // Populate nama dan nomor telepon
+      .populate("user", "name phoneNumber");
     if (!order || order.user._id.toString() !== req.user.id) {
       return res.status(404).json({ message: "Order not found" });
     }
@@ -103,6 +134,10 @@ router.get("/:id", auth, async (req, res) => {
   }
 });
 
+/**
+ * PUT /api/orders/:id/status
+ * Update status order
+ */
 router.put("/:id/status", auth, async (req, res) => {
   try {
     const { status } = req.body;
@@ -135,6 +170,10 @@ router.put("/:id/status", auth, async (req, res) => {
   }
 });
 
+/**
+ * PUT /api/orders/:id/pay
+ * Simulasi pembayaran order
+ */
 router.put("/:id/pay", auth, async (req, res) => {
   try {
     const order = await Order.findById(req.params.id);

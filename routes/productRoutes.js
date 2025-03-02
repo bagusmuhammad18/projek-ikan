@@ -55,8 +55,8 @@ const validateProduct = [
   body("stock").isNumeric().withMessage("Stock must be a number"),
   body("discount")
     .optional()
-    .isNumeric()
-    .withMessage("Discount must be a number"),
+    .isFloat({ min: 0, max: 100 }) // Diskon dalam persen (0-100)
+    .withMessage("Discount must be a percentage between 0 and 100"),
   body("weight").optional().isNumeric().withMessage("Weight must be a number"),
   body("dimensions.height")
     .optional()
@@ -128,6 +128,13 @@ async function uploadToUploadcare(fileBuffer, fileName) {
   return response.data.file;
 }
 
+// Helper untuk menghitung harga setelah diskon
+const calculateDiscountedPrice = (price, discount) => {
+  if (!discount || discount <= 0 || discount > 100) return price;
+  const discountAmount = (price * discount) / 100;
+  return price - discountAmount;
+};
+
 // Get semua produk dengan filter, sorting, dan pagination (tanpa admin)
 router.get("/", async (req, res) => {
   try {
@@ -150,7 +157,7 @@ router.get("/", async (req, res) => {
       query.name = { $regex: search, $options: "i" };
     }
 
-    // Price filter
+    // Price filter (menggunakan harga sebelum diskon)
     if (minPrice || maxPrice) {
       query.price = {};
       if (minPrice) query.price.$gte = Number(minPrice);
@@ -191,11 +198,24 @@ router.get("/", async (req, res) => {
       .skip(skip)
       .limit(limitNumber);
 
+    // Tambahkan harga setelah diskon ke respons
+    const productsWithDiscount = products.map((product) => {
+      const discountedPrice = calculateDiscountedPrice(
+        product.price,
+        product.discount
+      );
+      return {
+        ...product.toObject(),
+        originalPrice: product.price,
+        discountedPrice: discountedPrice,
+      };
+    });
+
     const total = await Product.countDocuments(query);
     const totalPages = Math.ceil(total / limitNumber);
 
     res.json({
-      products,
+      products: productsWithDiscount,
       pagination: {
         currentPage: pageNumber,
         totalPages,
@@ -204,7 +224,6 @@ router.get("/", async (req, res) => {
       },
     });
   } catch (err) {
-    console.error("Server Error:", err.message);
     res.status(500).json({ message: "Server error", error: err.message });
   }
 });
@@ -213,7 +232,18 @@ router.get("/", async (req, res) => {
 router.get("/all", async (req, res) => {
   try {
     const products = await Product.find();
-    res.json(products);
+    const productsWithDiscount = products.map((product) => {
+      const discountedPrice = calculateDiscountedPrice(
+        product.price,
+        product.discount
+      );
+      return {
+        ...product.toObject(),
+        originalPrice: product.price,
+        discountedPrice: discountedPrice,
+      };
+    });
+    res.json(productsWithDiscount);
   } catch (err) {
     res.status(500).json({ message: "Server error" });
   }
@@ -224,7 +254,18 @@ router.get("/:id", async (req, res) => {
   try {
     const product = await Product.findById(req.params.id);
     if (!product) return res.status(404).json({ message: "Product not found" });
-    res.json(product);
+
+    const discountedPrice = calculateDiscountedPrice(
+      product.price,
+      product.discount
+    );
+    const productWithDiscount = {
+      ...product.toObject(),
+      originalPrice: product.price,
+      discountedPrice: discountedPrice,
+    };
+
+    res.json(productWithDiscount);
   } catch (err) {
     res.status(500).json({ message: "Server error", error: err.message });
   }
@@ -255,7 +296,6 @@ router.post(
         }
       }
 
-      // Parsing dimensions dan type dari req.body
       let dimensions = { height: 0, length: 0, width: 0 };
       if (req.body.dimensions) {
         try {
@@ -265,7 +305,6 @@ router.post(
             width: 0,
           };
         } catch (parseError) {
-          console.error("Error parsing dimensions:", parseError);
           return res.status(400).json({ message: "Invalid dimensions format" });
         }
       }
@@ -275,7 +314,6 @@ router.post(
         try {
           type = JSON.parse(req.body.type) || { color: [], size: [] };
         } catch (parseError) {
-          console.error("Error parsing type:", parseError);
           return res.status(400).json({ message: "Invalid type format" });
         }
       }
@@ -284,14 +322,26 @@ router.post(
         ...req.body,
         seller: req.user.id,
         images: imageUrls,
-        dimensions, // Tambahkan dimensions
-        type, // Tambahkan type
+        dimensions,
+        type,
+        discount: req.body.discount || 0, // Default 0 jika tidak ada diskon
         isPublished:
           req.body.isPublished !== undefined ? req.body.isPublished : true,
       });
 
       await newProduct.save();
-      res.status(201).json(newProduct);
+
+      const discountedPrice = calculateDiscountedPrice(
+        newProduct.price,
+        newProduct.discount
+      );
+      const productWithDiscount = {
+        ...newProduct.toObject(),
+        originalPrice: newProduct.price,
+        discountedPrice: discountedPrice,
+      };
+
+      res.status(201).json(productWithDiscount);
     } catch (err) {
       res
         .status(500)
@@ -319,7 +369,6 @@ router.put(
         try {
           existingImageUrls = JSON.parse(req.body.existingImages) || [];
         } catch (parseError) {
-          console.error("Error parsing existingImages:", parseError);
           return res
             .status(400)
             .json({ message: "Invalid existingImages format" });
@@ -331,7 +380,6 @@ router.put(
         try {
           removedImageUrls = JSON.parse(req.body.removedImages) || [];
         } catch (parseError) {
-          console.error("Error parsing removedImages:", parseError);
           return res
             .status(400)
             .json({ message: "Invalid removedImages format" });
@@ -363,7 +411,6 @@ router.put(
             width: 0,
           };
         } catch (parseError) {
-          console.error("Error parsing dimensions:", parseError);
           return res.status(400).json({ message: "Invalid dimensions format" });
         }
       }
@@ -373,7 +420,6 @@ router.put(
         try {
           type = JSON.parse(req.body.type) || { color: [], size: [] };
         } catch (parseError) {
-          console.error("Error parsing type:", parseError);
           return res.status(400).json({ message: "Invalid type format" });
         }
       }
@@ -384,6 +430,7 @@ router.put(
           ...req.body,
           images: imageUrls,
           weight: req.body.weight || product.weight,
+          discount: req.body.discount || product.discount || 0, // Gunakan discount yang ada jika tidak diperbarui
           dimensions,
           type,
           isPublished: req.body.isPublished || product.isPublished,
@@ -391,7 +438,17 @@ router.put(
         { new: true }
       );
 
-      res.json(updatedProduct);
+      const discountedPrice = calculateDiscountedPrice(
+        updatedProduct.price,
+        updatedProduct.discount
+      );
+      const productWithDiscount = {
+        ...updatedProduct.toObject(),
+        originalPrice: updatedProduct.price,
+        discountedPrice: discountedPrice,
+      };
+
+      res.json(productWithDiscount);
     } catch (err) {
       res.status(500).json({
         message: "Failed to update product",
