@@ -6,11 +6,6 @@ const Product = require("../models/Product");
 const auth = require("../middleware/auth");
 const { body, validationResult } = require("express-validator");
 
-/**
- * POST /api/orders
- * Checkout dari shopping cart ke order.
- * Pada proses ini, stok produk akan dicek dan dikurangi.
- */
 router.post(
   "/",
   auth,
@@ -26,7 +21,6 @@ router.post(
     }
 
     try {
-      // Ambil cart user dan populasi data produk
       const cart = await Cart.findOne({ user: req.user.id }).populate(
         "items.product"
       );
@@ -34,7 +28,6 @@ router.post(
         return res.status(400).json({ message: "Cart is empty" });
       }
 
-      // Periksa stok untuk setiap item di cart
       for (const item of cart.items) {
         if (item.quantity > item.product.stock) {
           return res.status(400).json({
@@ -43,7 +36,6 @@ router.post(
         }
       }
 
-      // Buat order items dari data cart
       const orderItems = cart.items.map((item) => ({
         product: item.product._id,
         quantity: item.quantity,
@@ -55,14 +47,12 @@ router.post(
         0
       );
 
-      // Update stok untuk setiap produk sesuai pesanan
       for (const item of cart.items) {
         const product = await Product.findById(item.product._id);
         product.stock -= item.quantity;
         await product.save();
       }
 
-      // Buat order baru dengan data pesanan dan alamat pengiriman
       const newOrder = new Order({
         user: req.user.id,
         items: orderItems,
@@ -71,8 +61,6 @@ router.post(
       });
 
       await newOrder.save();
-
-      // Hapus cart setelah checkout
       await Cart.findOneAndDelete({ user: req.user.id });
 
       res.status(201).json(newOrder);
@@ -85,15 +73,12 @@ router.post(
   }
 );
 
-/**
- * GET /api/orders
- * Melihat daftar order pengguna
- */
 router.get("/", auth, async (req, res) => {
   try {
-    const orders = await Order.find({ user: req.user.id }).sort({
-      createdAt: -1,
-    });
+    const orders = await Order.find({ user: req.user.id })
+      .populate("items.product")
+      .populate("user", "name phoneNumber") // Populate nama dan nomor telepon
+      .sort({ createdAt: -1 });
     res.json(orders);
   } catch (err) {
     res
@@ -102,14 +87,12 @@ router.get("/", auth, async (req, res) => {
   }
 });
 
-/**
- * GET /api/orders/:id
- * Melihat detail order tertentu
- */
 router.get("/:id", auth, async (req, res) => {
   try {
-    const order = await Order.findById(req.params.id).populate("items.product");
-    if (!order || order.user.toString() !== req.user.id) {
+    const order = await Order.findById(req.params.id)
+      .populate("items.product")
+      .populate("user", "name phoneNumber"); // Populate nama dan nomor telepon
+    if (!order || order.user._id.toString() !== req.user.id) {
       return res.status(404).json({ message: "Order not found" });
     }
     res.json(order);
@@ -120,11 +103,6 @@ router.get("/:id", auth, async (req, res) => {
   }
 });
 
-/**
- * PUT /api/orders/:id/status
- * Update status order (contoh: Admin-only)
- * Status valid: [Pending, Paid, Processing, Shipped, Delivered, Cancelled]
- */
 router.put("/:id/status", auth, async (req, res) => {
   try {
     const { status } = req.body;
@@ -157,11 +135,6 @@ router.put("/:id/status", auth, async (req, res) => {
   }
 });
 
-/**
- * PUT /api/orders/:id/pay
- * Simulasi pembayaran order (hanya untuk testing).
- * Mengubah status order dari 'Pending' ke 'Paid'.
- */
 router.put("/:id/pay", auth, async (req, res) => {
   try {
     const order = await Order.findById(req.params.id);
@@ -176,7 +149,6 @@ router.put("/:id/pay", auth, async (req, res) => {
         .json({ message: "Order sudah dibayar atau tidak bisa diproses" });
     }
 
-    // Simulasi pembayaran berhasil
     order.status = "Paid";
     await order.save();
 

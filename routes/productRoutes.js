@@ -157,7 +157,7 @@ router.get("/", async (req, res) => {
       if (maxPrice) query.price.$lte = Number(maxPrice);
     }
 
-    // Color filter (case-insensitive with $or and $regex)
+    // Color filter (case-insensitive dengan $or dan $regex)
     if (color) {
       const colors = Array.isArray(color) ? color : [color];
       const lowerCaseColors = colors.map((c) => c.toLowerCase());
@@ -166,7 +166,7 @@ router.get("/", async (req, res) => {
       }));
     }
 
-    // Size filter (case-insensitive with $or and $regex)
+    // Size filter (case-insensitive dengan $or dan $regex)
     if (size) {
       const sizes = Array.isArray(size) ? size : [size];
       const lowerCaseSizes = sizes.map((s) => s.toLowerCase());
@@ -255,10 +255,37 @@ router.post(
         }
       }
 
+      // Parsing dimensions dan type dari req.body
+      let dimensions = { height: 0, length: 0, width: 0 };
+      if (req.body.dimensions) {
+        try {
+          dimensions = JSON.parse(req.body.dimensions) || {
+            height: 0,
+            length: 0,
+            width: 0,
+          };
+        } catch (parseError) {
+          console.error("Error parsing dimensions:", parseError);
+          return res.status(400).json({ message: "Invalid dimensions format" });
+        }
+      }
+
+      let type = { color: [], size: [] };
+      if (req.body.type) {
+        try {
+          type = JSON.parse(req.body.type) || { color: [], size: [] };
+        } catch (parseError) {
+          console.error("Error parsing type:", parseError);
+          return res.status(400).json({ message: "Invalid type format" });
+        }
+      }
+
       const newProduct = new Product({
         ...req.body,
         seller: req.user.id,
         images: imageUrls,
+        dimensions, // Tambahkan dimensions
+        type, // Tambahkan type
         isPublished:
           req.body.isPublished !== undefined ? req.body.isPublished : true,
       });
