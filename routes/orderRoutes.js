@@ -3,6 +3,7 @@ const router = express.Router();
 const Order = require("../models/Order");
 const Cart = require("../models/Cart");
 const Product = require("../models/Product");
+const User = require("../models/User"); // Import User model
 const auth = require("../middleware/auth");
 const { body, validationResult } = require("express-validator");
 
@@ -38,7 +39,6 @@ router.post(
         return res.status(400).json({ message: "Cart is empty" });
       }
 
-      // Periksa stok
       for (const item of cart.items) {
         if (item.quantity > item.product.stock) {
           return res.status(400).json({
@@ -47,7 +47,6 @@ router.post(
         }
       }
 
-      // Buat order items dengan harga setelah diskon
       const orderItems = cart.items.map((item) => {
         const discountedPrice = calculateDiscountedPrice(
           item.product.price,
@@ -56,26 +55,23 @@ router.post(
         return {
           product: item.product._id,
           quantity: item.quantity,
-          price: item.product.price, // Harga asli
-          discount: item.product.discount || 0, // Persentase diskon
-          discountedPrice: discountedPrice, // Harga setelah diskon
+          price: item.product.price,
+          discount: item.product.discount || 0,
+          discountedPrice: discountedPrice,
         };
       });
 
-      // Hitung total berdasarkan harga setelah diskon
       const totalAmount = orderItems.reduce(
         (sum, item) => sum + item.quantity * item.discountedPrice,
         0
       );
 
-      // Kurangi stok produk
       for (const item of cart.items) {
         const product = await Product.findById(item.product._id);
         product.stock -= item.quantity;
         await product.save();
       }
 
-      // Buat order baru
       const newOrder = new Order({
         user: req.user.id,
         items: orderItems,
@@ -84,6 +80,12 @@ router.post(
       });
 
       await newOrder.save();
+
+      // Add the new order to the user's orders array
+      await User.findByIdAndUpdate(req.user.id, {
+        $push: { orders: newOrder._id },
+      });
+
       await Cart.findOneAndDelete({ user: req.user.id });
 
       res.status(201).json(newOrder);
@@ -98,19 +100,48 @@ router.post(
 
 /**
  * GET /api/orders
- * Mengambil daftar order pengguna dengan diskon
+ * Mengambil daftar order pengguna yang sedang login
  */
 router.get("/", auth, async (req, res) => {
   try {
     const orders = await Order.find({ user: req.user.id })
-      .populate("items.product")
+      .populate("items.product", "name price images")
       .populate("user", "name phoneNumber")
       .sort({ createdAt: -1 });
+    console.log("Orders for user", req.user.id, ":", orders); // Debugging
     res.json(orders);
   } catch (err) {
+    console.error("Error fetching user orders:", err);
     res
       .status(500)
       .json({ message: "Failed to retrieve orders", error: err.message });
+  }
+});
+
+/**
+ * GET /api/orders/all
+ * Mengambil semua order di database (hanya untuk admin)
+ */
+router.get("/all", auth, async (req, res) => {
+  try {
+    // Cek jika pengguna adalah admin
+    if (req.user.role !== "admin") {
+      return res.status(403).json({
+        message: "Akses ditolak. Hanya admin yang dapat melihat semua order.",
+      });
+    }
+
+    const orders = await Order.find()
+      .populate("items.product", "name price images")
+      .populate("user", "name phoneNumber")
+      .sort({ createdAt: -1 });
+    console.log("All orders:", orders); // Debugging
+    res.json(orders);
+  } catch (err) {
+    console.error("Error fetching all orders:", err);
+    res
+      .status(500)
+      .json({ message: "Failed to retrieve all orders", error: err.message });
   }
 });
 

@@ -8,19 +8,19 @@ const crypto = require("crypto");
 const transporter = require("../utils/nodemailer");
 const rateLimit = require("express-rate-limit");
 const mongoSanitize = require("express-mongo-sanitize");
-const bcrypt = require("bcryptjs"); // Tetap diperlukan untuk verifikasi password saat login
+const bcrypt = require("bcryptjs");
 
 // Middleware Rate Limiting untuk mencegah brute-force attack
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 menit
-  max: 100, // Maksimal 5 request dalam 15 menit
+  max: 100, // Maksimal 100 request dalam 15 menit
   message: { message: "Terlalu banyak percobaan, coba lagi nanti." },
 });
 
 // Middleware untuk sanitasi query MongoDB (mencegah NoSQL Injection)
 router.use(mongoSanitize());
 
-// Registrasi User dengan Rate Limiting
+// Registrasi User
 router.post(
   "/register",
   limiter,
@@ -49,7 +49,6 @@ router.post(
     try {
       const { name, phoneNumber, email, password } = req.body;
 
-      // Cek apakah email atau nomor telepon sudah terdaftar
       const existingUser = await User.findOne({ email });
       if (existingUser)
         return res.status(400).json({ message: "Email sudah terdaftar" });
@@ -60,17 +59,13 @@ router.post(
           .status(400)
           .json({ message: "Nomor telepon sudah terdaftar" });
 
-      // Buat user baru (password akan otomatis di-hash di model User.js)
       const user = new User({ name, phoneNumber, email, password });
       await user.save();
 
-      // Generate JWT Token
       const token = jwt.sign(
         { id: user._id, role: user.role },
         process.env.JWT_SECRET,
-        {
-          expiresIn: "7d",
-        }
+        { expiresIn: "7d" }
       );
 
       res.status(201).json({ user, token });
@@ -80,7 +75,7 @@ router.post(
   }
 );
 
-// Login User dengan Rate Limiting
+// Login User
 router.post(
   "/login",
   limiter,
@@ -103,20 +98,16 @@ router.post(
       const user = await User.findOne({ email });
 
       if (!user)
-        return res.status(401).json({ message: "Email atau password salah" });
+        return res쉬.status(401).json({ message: "Email atau password salah" });
 
-      // Verifikasi password
       const isMatch = await user.comparePassword(password);
       if (!isMatch)
         return res.status(401).json({ message: "Email atau password salah" });
 
-      // Generate Token
       const token = jwt.sign(
         { id: user._id, role: user.role },
         process.env.JWT_SECRET,
-        {
-          expiresIn: "7d",
-        }
+        { expiresIn: "7d" }
       );
 
       res.json({ user, token });
@@ -150,13 +141,10 @@ router.post(
       if (!user)
         return res.status(404).json({ message: "User tidak ditemukan" });
 
-      // Generate reset token
       const resetToken = user.generateResetPasswordToken();
       await user.save();
 
       const resetUrl = `${process.env.CLIENT_URL}/reset-password/${resetToken}`;
-
-      // Kirim email reset password
       const mailOptions = {
         from: process.env.EMAIL_USER,
         to: user.email,
@@ -204,7 +192,6 @@ router.post(
       if (!user)
         return res.status(400).json({ message: "Token invalid atau expired" });
 
-      // Update password (akan otomatis di-hash di model User.js)
       user.password = password;
       user.resetPasswordToken = undefined;
       user.resetPasswordExpire = undefined;
@@ -218,6 +205,49 @@ router.post(
     }
   }
 );
+// Hapus Pengguna Berdasarkan ID (Hanya Admin)
+router.delete("/customers/:id", auth, async (req, res) => {
+  try {
+    // Cek jika user adalah admin
+    if (req.user.role !== "admin") {
+      return res.status(403).json({
+        success: false,
+        message: "Akses ditolak. Hanya admin yang dapat menghapus pengguna.",
+      });
+    }
+
+    const { id } = req.params;
+
+    // Cari dan hapus pengguna berdasarkan ID
+    const deletedUser = await User.findByIdAndDelete(id);
+
+    if (!deletedUser) {
+      return res.status(404).json({
+        success: false,
+        message: "Pengguna tidak ditemukan",
+      });
+    }
+
+    // Pastikan pengguna yang dihapus adalah customer (opsional)
+    if (deletedUser.role !== "customer") {
+      return res.status(400).json({
+        success: false,
+        message: "Hanya pengguna dengan peran 'customer' yang dapat dihapus",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `Pengguna ${deletedUser.name} berhasil dihapus`,
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: "Gagal menghapus pengguna",
+      error: err.message,
+    });
+  }
+});
 
 // Profil User
 router.get("/profile", auth, async (req, res) => {
@@ -229,7 +259,6 @@ router.put("/profile", auth, async (req, res) => {
   try {
     const updates = { ...req.body };
 
-    // Jika ada perubahan password, gunakan fitur hashing di User.js
     if (updates.password) {
       const user = await User.findById(req.user.id);
       user.password = updates.password;
@@ -258,6 +287,65 @@ router.delete("/profile", auth, async (req, res) => {
     res
       .status(500)
       .json({ message: "Gagal menghapus akun", error: err.message });
+  }
+});
+
+// Get Semua Customer dengan Pagination dan Sorting
+router.get("/customers", auth, async (req, res) => {
+  try {
+    if (req.user.role !== "admin") {
+      return res.status(403).json({
+        success: false,
+        message: "Akses ditolak. Hanya admin yang dapat mengakses data ini.",
+      });
+    }
+
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    const totalCustomers = await User.countDocuments({ role: "customer" });
+    const customers = await User.find({ role: "customer" })
+      .select("name email phoneNumber createdAt orders _id")
+      .populate({
+        path: "orders",
+        select: "orderId createdAt totalAmount status",
+        options: { sort: { createdAt: -1 } },
+      })
+      .skip(skip)
+      .limit(limit)
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const formattedCustomers = customers.map((customer) => ({
+      _id: customer._id,
+      name: customer.name,
+      email: customer.email,
+      phoneNumber: customer.phoneNumber,
+      orders: customer.orders ? customer.orders.length : 0,
+      registrationDate: customer.createdAt,
+      orderDetails: customer.orders.map((order) => ({
+        orderId: order._id,
+        orderDate: order.createdAt,
+        totalAmount: order.totalAmount,
+        status: order.status,
+      })),
+    }));
+
+    res.status(200).json({
+      success: true,
+      total: totalCustomers,
+      page,
+      limit,
+      totalPages: Math.ceil(totalCustomers / limit),
+      data: formattedCustomers,
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: "Gagal mengambil data customer",
+      error: err.message,
+    });
   }
 });
 
