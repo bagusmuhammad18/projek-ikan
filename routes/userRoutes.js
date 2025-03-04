@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
-const User = require("../models/User");
+const User = require("../models/User"); // Sudah ada
+const Order = require("../models/Order"); // Tambahkan ini
 const { body, validationResult } = require("express-validator");
 const auth = require("../middleware/auth");
 const jwt = require("jsonwebtoken");
@@ -9,6 +10,7 @@ const transporter = require("../utils/nodemailer");
 const rateLimit = require("express-rate-limit");
 const mongoSanitize = require("express-mongo-sanitize");
 const bcrypt = require("bcryptjs");
+const mongoose = require("mongoose"); // Pastikan ini ada
 
 // Middleware Rate Limiting untuk mencegah brute-force attack
 const limiter = rateLimit({
@@ -300,36 +302,43 @@ router.get("/customers", auth, async (req, res) => {
       });
     }
 
+    // Pagination parameters
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
 
+    // Sorting parameters
+    const sortBy = req.query.sortBy || "createdAt"; // Default sort by createdAt
+    const sortOrder = req.query.sortOrder === "desc" ? -1 : 1; // asc = 1, desc = -1
+
+    // Validasi sortBy agar hanya menerima field yang diizinkan
+    const allowedSortFields = ["name", "createdAt"];
+    const sortField = allowedSortFields.includes(sortBy) ? sortBy : "createdAt";
+
+    // Hitung total dokumen
     const totalCustomers = await User.countDocuments({ role: "customer" });
-    const customers = await User.find({ role: "customer" })
-      .select("name email phoneNumber createdAt orders _id")
-      .populate({
-        path: "orders",
-        select: "orderId createdAt totalAmount status",
-        options: { sort: { createdAt: -1 } },
-      })
+
+    // Ambil data dengan sorting dinamis dan case-insensitive untuk field name
+    const query = User.find({ role: "customer" })
+      .select("name email phoneNumber createdAt _id")
       .skip(skip)
       .limit(limit)
-      .sort({ createdAt: -1 })
-      .lean();
+      .sort({ [sortField]: sortOrder });
 
+    // Tambahkan collation untuk case-insensitive sorting pada field name
+    if (sortField === "name") {
+      query.collation({ locale: "en", strength: 2 }); // Case-insensitive
+    }
+
+    const customers = await query.lean();
+
+    // Format data untuk frontend
     const formattedCustomers = customers.map((customer) => ({
       _id: customer._id,
       name: customer.name,
       email: customer.email,
       phoneNumber: customer.phoneNumber,
-      orders: customer.orders ? customer.orders.length : 0,
-      registrationDate: customer.createdAt,
-      orderDetails: customer.orders.map((order) => ({
-        orderId: order._id,
-        orderDate: order.createdAt,
-        totalAmount: order.totalAmount,
-        status: order.status,
-      })),
+      registrationDate: customer.createdAt, // Konsisten dengan frontend
     }));
 
     res.status(200).json({
@@ -341,9 +350,86 @@ router.get("/customers", auth, async (req, res) => {
       data: formattedCustomers,
     });
   } catch (err) {
+    console.error(err);
     res.status(500).json({
       success: false,
       message: "Gagal mengambil data customer",
+      error: err.message,
+    });
+  }
+});
+
+// Get Detail Customer Berdasarkan ID (Hanya Admin)
+router.get("/customers/:id/summary", auth, async (req, res) => {
+  try {
+    console.log("Request received for ID:", req.params.id);
+    console.log("User role from token:", req.user.role);
+
+    if (req.user.role !== "admin") {
+      console.log("Access denied: User is not admin");
+      return res.status(403).json({
+        success: false,
+        message: "Akses ditolak. Hanya admin yang dapat mengakses data ini.",
+      });
+    }
+
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      console.log("Invalid ID format:", id);
+      return res.status(400).json({
+        success: false,
+        message: "ID customer tidak valid",
+      });
+    }
+
+    const customer = await User.findById(id)
+      .select("name email phoneNumber gender addresses role")
+      .lean();
+    console.log("Customer found:", customer);
+
+    if (!customer || customer.role !== "customer") {
+      console.log("Customer not found or not a customer:", customer);
+      return res.status(404).json({
+        success: false,
+        message: "Customer tidak ditemukan",
+      });
+    }
+
+    const orders = await Order.aggregate([
+      { $match: { customer: new mongoose.Types.ObjectId(id) } }, // Tambahkan 'new'
+      { $group: { _id: "$status", count: { $sum: 1 } } },
+    ]);
+    console.log("Orders aggregated:", orders);
+
+    const orderSummary = {
+      totalOrders: 0,
+      completed: 0,
+      canceled: 0,
+    };
+    orders.forEach((order) => {
+      orderSummary.totalOrders += order.count;
+      if (order._id === "Completed") orderSummary.completed = order.count;
+      if (order._id === "Canceled") orderSummary.canceled = order.count;
+    });
+
+    const response = {
+      success: true,
+      data: {
+        name: customer.name,
+        email: customer.email,
+        phoneNumber: customer.phoneNumber,
+        gender: customer.gender,
+        address: customer.addresses.length > 0 ? customer.addresses[0] : null,
+        orderSummary,
+      },
+    };
+    res.status(200).json(response);
+  } catch (err) {
+    console.error("Error fetching customer summary:", err);
+    res.status(500).json({
+      success: false,
+      message: "Gagal mengambil detail customer",
       error: err.message,
     });
   }
