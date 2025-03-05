@@ -257,29 +257,80 @@ router.get("/profile", auth, async (req, res) => {
 });
 
 // Update Profil User
-router.put("/profile", auth, async (req, res) => {
+// Update Profil User (Admin atau User Sendiri)
+router.put("/profile/:id?", auth, async (req, res) => {
   try {
+    const targetId = req.params.id || req.user.id;
+
+    if (req.params.id && !mongoose.Types.ObjectId.isValid(targetId)) {
+      return res.status(400).json({
+        success: false,
+        message: "ID user tidak valid",
+      });
+    }
+
+    if (req.user.role !== "admin" && req.user.id !== targetId) {
+      return res.status(403).json({
+        success: false,
+        message:
+          "Akses ditolak. Anda tidak memiliki izin untuk mengedit profil ini.",
+      });
+    }
+
     const updates = { ...req.body };
+    console.log(
+      "Data yang diterima dari client:",
+      JSON.stringify(updates, null, 2)
+    );
 
     if (updates.password) {
-      const user = await User.findById(req.user.id);
+      const user = await User.findById(targetId);
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: "User tidak ditemukan",
+        });
+      }
       user.password = updates.password;
       await user.save();
       delete updates.password;
     }
 
-    const updatedUser = await User.findByIdAndUpdate(req.user.id, updates, {
+    // Validasi addresses jika ada
+    if (updates.addresses && Array.isArray(updates.addresses)) {
+      for (const addr of updates.addresses) {
+        if (!addr.streetAddress || !addr.recipientName || !addr.phoneNumber) {
+          return res.status(400).json({
+            success: false,
+            message: "Semua field wajib di addresses harus diisi",
+          });
+        }
+      }
+    }
+
+    const updatedUser = await User.findByIdAndUpdate(targetId, updates, {
       new: true,
+      runValidators: true,
     });
 
+    if (!updatedUser) {
+      return res.status(404).json({
+        success: false,
+        message: "User tidak ditemukan",
+      });
+    }
+
+    console.log("User setelah update:", JSON.stringify(updatedUser, null, 2));
     res.json(updatedUser);
   } catch (err) {
-    res
-      .status(500)
-      .json({ message: "Gagal update profil", error: err.message });
+    console.error("Error updating user:", err);
+    res.status(500).json({
+      success: false,
+      message: "Gagal update profil",
+      error: err.message,
+    });
   }
 });
-
 // Hapus Akun User
 router.delete("/profile", auth, async (req, res) => {
   try {
@@ -362,11 +413,7 @@ router.get("/customers", auth, async (req, res) => {
 // Get Detail Customer Berdasarkan ID (Hanya Admin)
 router.get("/customers/:id/summary", auth, async (req, res) => {
   try {
-    console.log("Request received for ID:", req.params.id);
-    console.log("User role from token:", req.user.role);
-
     if (req.user.role !== "admin") {
-      console.log("Access denied: User is not admin");
       return res.status(403).json({
         success: false,
         message: "Akses ditolak. Hanya admin yang dapat mengakses data ini.",
@@ -376,7 +423,6 @@ router.get("/customers/:id/summary", auth, async (req, res) => {
     const { id } = req.params;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      console.log("Invalid ID format:", id);
       return res.status(400).json({
         success: false,
         message: "ID customer tidak valid",
@@ -386,24 +432,19 @@ router.get("/customers/:id/summary", auth, async (req, res) => {
     const customer = await User.findById(id)
       .select("name email phoneNumber gender addresses role")
       .lean();
-    console.log("Customer found:", customer);
 
     if (!customer || customer.role !== "customer") {
-      console.log("Customer not found or not a customer:", customer);
       return res.status(404).json({
         success: false,
         message: "Customer tidak ditemukan",
       });
     }
 
-    // Agregasi order berdasarkan user
     const orders = await Order.aggregate([
       { $match: { user: new mongoose.Types.ObjectId(id) } },
       { $group: { _id: "$status", count: { $sum: 1 } } },
     ]);
-    console.log("Orders aggregated:", orders);
 
-    // Inisialisasi orderSummary
     const orderSummary = {
       totalOrders: 0,
       completed: 0,
@@ -411,18 +452,12 @@ router.get("/customers/:id/summary", auth, async (req, res) => {
       canceled: 0,
     };
 
-    // Hitung total dan kelompokkan status
     orders.forEach((order) => {
       orderSummary.totalOrders += order.count;
-      if (order._id === "Delivered") {
-        orderSummary.completed = order.count; // Completed = Delivered
-      } else if (
-        ["Pending", "Paid", "Processing", "Shipped"].includes(order._id)
-      ) {
-        orderSummary.processing += order.count; // Processing = Pending, Paid, Processing, Shipped
-      } else if (order._id === "Cancelled") {
-        orderSummary.canceled = order.count; // Canceled = Cancelled
-      }
+      if (order._id === "Delivered") orderSummary.completed = order.count;
+      else if (["Pending", "Paid", "Processing", "Shipped"].includes(order._id))
+        orderSummary.processing += order.count;
+      else if (order._id === "Cancelled") orderSummary.canceled = order.count;
     });
 
     const response = {
@@ -432,13 +467,12 @@ router.get("/customers/:id/summary", auth, async (req, res) => {
         email: customer.email,
         phoneNumber: customer.phoneNumber,
         gender: customer.gender,
-        address: customer.addresses.length > 0 ? customer.addresses[0] : null,
+        address: customer.addresses.length > 0 ? customer.addresses[0] : null, // Pastikan ini ada
         orderSummary,
       },
     };
     res.status(200).json(response);
   } catch (err) {
-    console.error("Error fetching customer summary:", err);
     res.status(500).json({
       success: false,
       message: "Gagal mengambil detail customer",
