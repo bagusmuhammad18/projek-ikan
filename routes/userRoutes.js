@@ -396,21 +396,33 @@ router.get("/customers/:id/summary", auth, async (req, res) => {
       });
     }
 
+    // Agregasi order berdasarkan user
     const orders = await Order.aggregate([
-      { $match: { customer: new mongoose.Types.ObjectId(id) } }, // Tambahkan 'new'
+      { $match: { user: new mongoose.Types.ObjectId(id) } },
       { $group: { _id: "$status", count: { $sum: 1 } } },
     ]);
     console.log("Orders aggregated:", orders);
 
+    // Inisialisasi orderSummary
     const orderSummary = {
       totalOrders: 0,
       completed: 0,
+      processing: 0,
       canceled: 0,
     };
+
+    // Hitung total dan kelompokkan status
     orders.forEach((order) => {
       orderSummary.totalOrders += order.count;
-      if (order._id === "Completed") orderSummary.completed = order.count;
-      if (order._id === "Canceled") orderSummary.canceled = order.count;
+      if (order._id === "Delivered") {
+        orderSummary.completed = order.count; // Completed = Delivered
+      } else if (
+        ["Pending", "Paid", "Processing", "Shipped"].includes(order._id)
+      ) {
+        orderSummary.processing += order.count; // Processing = Pending, Paid, Processing, Shipped
+      } else if (order._id === "Cancelled") {
+        orderSummary.canceled = order.count; // Canceled = Cancelled
+      }
     });
 
     const response = {
@@ -430,6 +442,54 @@ router.get("/customers/:id/summary", auth, async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Gagal mengambil detail customer",
+      error: err.message,
+    });
+  }
+});
+
+// Get Transaction History Berdasarkan ID Customer (Hanya Admin)
+router.get("/customers/:id/orders", auth, async (req, res) => {
+  try {
+    if (req.user.role !== "admin") {
+      return res.status(403).json({
+        success: false,
+        message: "Akses ditolak. Hanya admin yang dapat mengakses data ini.",
+      });
+    }
+
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "ID customer tidak valid",
+      });
+    }
+
+    // Cari customer untuk memastikan ada
+    const customer = await User.findById(id).lean();
+    if (!customer || customer.role !== "customer") {
+      return res.status(404).json({
+        success: false,
+        message: "Customer tidak ditemukan",
+      });
+    }
+
+    // Ambil semua order untuk user ini dengan populate data user dan product
+    const orders = await Order.find({ user: id })
+      .populate("user", "name phoneNumber") // Populate nama dan nomor telepon user
+      .populate("items.product", "name images") // Populate nama dan gambar produk
+      .lean();
+
+    res.status(200).json({
+      success: true,
+      data: orders,
+    });
+  } catch (err) {
+    console.error("Error fetching orders:", err);
+    res.status(500).json({
+      success: false,
+      message: "Gagal mengambil riwayat transaksi",
       error: err.message,
     });
   }

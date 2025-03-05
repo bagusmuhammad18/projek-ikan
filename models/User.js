@@ -23,7 +23,7 @@ const userSchema = new mongoose.Schema({
     lowercase: true,
   },
   password: { type: String, required: true, minlength: 6 },
-  gender: { type: String, enum: ["male", "female", "other"], default: "other" }, // Tambah gender
+  gender: { type: String, enum: ["Male", "Female", "Other"], default: "Other" }, // Tambah gender
   role: { type: String, enum: ["customer", "admin"], default: "customer" },
   createdAt: { type: Date, default: Date.now },
   resetPasswordToken: String,
