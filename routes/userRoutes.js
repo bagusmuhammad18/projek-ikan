@@ -278,10 +278,6 @@ router.put("/profile/:id?", auth, async (req, res) => {
     }
 
     const updates = { ...req.body };
-    console.log(
-      "Data yang diterima dari client:",
-      JSON.stringify(updates, null, 2)
-    );
 
     if (updates.password) {
       const user = await User.findById(targetId);
@@ -320,7 +316,6 @@ router.put("/profile/:id?", auth, async (req, res) => {
       });
     }
 
-    console.log("User setelah update:", JSON.stringify(updatedUser, null, 2));
     res.json(updatedUser);
   } catch (err) {
     console.error("Error updating user:", err);
