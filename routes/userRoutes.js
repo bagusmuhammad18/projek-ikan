@@ -39,8 +39,19 @@ router.post(
       .withMessage("Email tidak valid")
       .normalizeEmail(),
     body("password")
-      .isLength({ min: 6 })
-      .withMessage("Password minimal 6 karakter"),
+      .isLength({ min: 8 }) // Minimal 8 karakter
+      .withMessage("Password minimal 8 karakter")
+      .matches(/[A-Z]/)
+      .withMessage("Password harus mengandung minimal 1 huruf kapital")
+      .matches(/[a-z]/)
+      .withMessage("Password harus mengandung minimal 1 huruf kecil")
+      .matches(/[0-9]/)
+      .withMessage("Password harus mengandung minimal 1 angka")
+      .matches(/[!@#$%^&*(),.?":{}|<>]/)
+      .withMessage("Password harus mengandung minimal 1 simbol khusus")
+      .not()
+      .matches(/\s/)
+      .withMessage("Password tidak boleh mengandung spasi"),
   ],
   async (req, res) => {
     const errors = validationResult(req);
@@ -100,7 +111,7 @@ router.post(
       const user = await User.findOne({ email });
 
       if (!user)
-        return res쉬.status(401).json({ message: "Email atau password salah" });
+        return res.status(401).json({ message: "Email atau password salah" });
 
       const isMatch = await user.comparePassword(password);
       if (!isMatch)
