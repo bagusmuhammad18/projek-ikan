@@ -23,8 +23,13 @@ const userSchema = new mongoose.Schema({
     lowercase: true,
   },
   password: { type: String, required: true, minlength: 6 },
-  gender: { type: String, enum: ["Male", "Female", "Other"], default: "Other" }, // Tambah gender
+  gender: {
+    type: String,
+    enum: ["Laki-laki", "Perempuan", "Lainnya"],
+    default: "Lainnya",
+  },
   role: { type: String, enum: ["customer", "admin"], default: "customer" },
+  avatar: { type: String, default: null }, // Tambahkan field avatar
   createdAt: { type: Date, default: Date.now },
   resetPasswordToken: String,
   resetPasswordExpire: Date,
@@ -32,23 +37,34 @@ const userSchema = new mongoose.Schema({
   addresses: { type: [addressSchema], default: [] },
 });
 
+// Hash password sebelum menyimpan user
 userSchema.pre("save", async function (next) {
   if (!this.isModified("password")) return next();
-  this.password = await bcrypt.hash(this.password, 10);
-  next();
+  try {
+    const salt = await bcrypt.genSalt(10);
+    this.password = await bcrypt.hash(this.password, salt);
+    next();
+  } catch (err) {
+    next(err);
+  }
 });
 
-userSchema.methods.comparePassword = async function (password) {
-  return await bcrypt.compare(password, this.password);
+// Method untuk membandingkan password
+userSchema.methods.comparePassword = async function (candidatePassword) {
+  if (!this.password) {
+    throw new Error("Password not set for this user");
+  }
+  return await bcrypt.compare(candidatePassword, this.password);
 };
 
+// Method untuk generate token reset password
 userSchema.methods.generateResetPasswordToken = function () {
   const resetToken = crypto.randomBytes(20).toString("hex");
   this.resetPasswordToken = crypto
     .createHash("sha256")
     .update(resetToken)
     .digest("hex");
-  this.resetPasswordExpire = Date.now() + 3600000;
+  this.resetPasswordExpire = Date.now() + 3600000; // 1 jam
   return resetToken;
 };
 

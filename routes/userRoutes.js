@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
-const User = require("../models/User"); // Sudah ada
-const Order = require("../models/Order"); // Tambahkan ini
+const User = require("../models/User");
+const Order = require("../models/Order");
 const { body, validationResult } = require("express-validator");
 const auth = require("../middleware/auth");
 const jwt = require("jsonwebtoken");
@@ -10,7 +10,11 @@ const transporter = require("../utils/nodemailer");
 const rateLimit = require("express-rate-limit");
 const mongoSanitize = require("express-mongo-sanitize");
 const bcrypt = require("bcryptjs");
-const mongoose = require("mongoose"); // Pastikan ini ada
+const mongoose = require("mongoose");
+const multer = require("multer");
+const axios = require("axios");
+const FormData = require("form-data");
+const sharp = require("sharp");
 
 // Middleware Rate Limiting untuk mencegah brute-force attack
 const limiter = rateLimit({
@@ -19,8 +23,89 @@ const limiter = rateLimit({
   message: { message: "Terlalu banyak percobaan, coba lagi nanti." },
 });
 
+// Konfigurasi Multer untuk menyimpan file di memory dengan filter gambar
+const storage = multer.memoryStorage();
+const fileFilter = (req, file, cb) => {
+  const allowedTypes = [
+    "image/jpeg",
+    "image/png",
+    "image/gif",
+    "image/webp",
+    "image/bmp",
+  ];
+  if (allowedTypes.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(
+      new Error("Hanya file gambar yang diizinkan (jpeg, png, gif, webp, bmp)"),
+      false
+    );
+  }
+};
+
+const upload = multer({
+  storage: storage,
+  fileFilter: fileFilter,
+  limits: { fileSize: 5 * 1024 * 1024 }, // Batas ukuran file 5MB sebelum kompresi
+});
+
+// Middleware untuk menangani error Multer
+const handleMulterError = (err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    return res.status(400).json({ message: err.message });
+  } else if (err) {
+    return res.status(400).json({ message: err.message });
+  }
+  next();
+};
+
 // Middleware untuk sanitasi query MongoDB (mencegah NoSQL Injection)
 router.use(mongoSanitize());
+
+// Helper untuk kompresi gambar
+async function compressImage(fileBuffer) {
+  try {
+    let quality = 80;
+    let compressedBuffer = fileBuffer;
+    let fileSize = fileBuffer.length;
+
+    while (fileSize > 1048576 && quality > 10) {
+      // Batas 1MB
+      compressedBuffer = await sharp(fileBuffer).jpeg({ quality }).toBuffer();
+      fileSize = compressedBuffer.length;
+      quality -= 10;
+    }
+
+    if (fileSize > 1048576) {
+      throw new Error(
+        "Gambar tidak bisa dikompresi di bawah 1MB dengan kualitas yang wajar"
+      );
+    }
+
+    return compressedBuffer;
+  } catch (err) {
+    throw new Error("Gagal mengompresi gambar: " + err.message);
+  }
+}
+
+// Helper untuk upload gambar ke Uploadcare
+async function uploadToUploadcare(fileBuffer, fileName) {
+  const compressedBuffer = await compressImage(fileBuffer);
+  const formData = new FormData();
+  formData.append("UPLOADCARE_PUB_KEY", process.env.UPLOADCARE_PUBLIC_KEY);
+  formData.append("UPLOADCARE_STORE", "auto");
+  formData.append("file", compressedBuffer, fileName);
+
+  const response = await axios.post(
+    "https://upload.uploadcare.com/base/",
+    formData,
+    {
+      headers: formData.getHeaders(),
+    }
+  );
+
+  return response.data.file;
+}
 
 // Registrasi User
 router.post(
@@ -39,7 +124,7 @@ router.post(
       .withMessage("Email tidak valid")
       .normalizeEmail(),
     body("password")
-      .isLength({ min: 8 }) // Minimal 8 karakter
+      .isLength({ min: 8 })
       .withMessage("Password minimal 8 karakter")
       .matches(/[A-Z]/)
       .withMessage("Password harus mengandung minimal 1 huruf kapital")
@@ -108,14 +193,23 @@ router.post(
 
     try {
       const { email, password } = req.body;
-      const user = await User.findOne({ email });
+      console.log("Login attempt:", { email, password });
 
-      if (!user)
+      const user = await User.findOne({ email }).select(
+        "name email phoneNumber role password"
+      );
+      console.log("User found:", user);
+
+      if (!user) {
         return res.status(401).json({ message: "Email atau password salah" });
+      }
 
       const isMatch = await user.comparePassword(password);
-      if (!isMatch)
+      console.log("Password match:", isMatch);
+
+      if (!isMatch) {
         return res.status(401).json({ message: "Email atau password salah" });
+      }
 
       const token = jwt.sign(
         { id: user._id, role: user.role },
@@ -123,8 +217,18 @@ router.post(
         { expiresIn: "7d" }
       );
 
-      res.json({ user, token });
+      res.json({
+        user: {
+          _id: user._id,
+          name: user.name,
+          email: user.email,
+          phoneNumber: user.phoneNumber,
+          role: user.role,
+        },
+        token,
+      });
     } catch (err) {
+      console.error("Login error:", err);
       res.status(500).json({ message: "Login gagal", error: err.message });
     }
   }
@@ -218,10 +322,10 @@ router.post(
     }
   }
 );
+
 // Hapus Pengguna Berdasarkan ID (Hanya Admin)
 router.delete("/customers/:id", auth, async (req, res) => {
   try {
-    // Cek jika user adalah admin
     if (req.user.role !== "admin") {
       return res.status(403).json({
         success: false,
@@ -231,7 +335,6 @@ router.delete("/customers/:id", auth, async (req, res) => {
 
     const { id } = req.params;
 
-    // Cari dan hapus pengguna berdasarkan ID
     const deletedUser = await User.findByIdAndDelete(id);
 
     if (!deletedUser) {
@@ -241,7 +344,6 @@ router.delete("/customers/:id", auth, async (req, res) => {
       });
     }
 
-    // Pastikan pengguna yang dihapus adalah customer (opsional)
     if (deletedUser.role !== "customer") {
       return res.status(400).json({
         success: false,
@@ -264,10 +366,73 @@ router.delete("/customers/:id", auth, async (req, res) => {
 
 // Profil User
 router.get("/profile", auth, async (req, res) => {
-  res.json(req.user);
+  try {
+    const user = await User.findById(req.user.id)
+      .select("name email phoneNumber role addresses gender avatar")
+      .lean();
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User tidak ditemukan",
+      });
+    }
+
+    res.json({
+      success: true,
+      data: user,
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: "Gagal mengambil profil",
+      error: err.message,
+    });
+  }
 });
 
-// Update Profil User
+// Upload Avatar
+router.post(
+  "/profile/avatar",
+  auth,
+  upload.single("avatar"),
+  handleMulterError,
+  async (req, res) => {
+    try {
+      if (!req.file) {
+        return res
+          .status(400)
+          .json({ message: "Tidak ada file yang diupload" });
+      }
+
+      const user = await User.findById(req.user.id);
+      if (!user) {
+        return res.status(404).json({ message: "User tidak ditemukan" });
+      }
+
+      const fileId = await uploadToUploadcare(
+        req.file.buffer,
+        req.file.originalname
+      );
+      const avatarUrl = `https://ucarecdn.com/${fileId}/`;
+
+      user.avatar = avatarUrl;
+      await user.save();
+
+      res.json({
+        success: true,
+        avatar: user.avatar,
+      });
+    } catch (err) {
+      res.status(500).json({
+        success: false,
+        message: "Gagal upload avatar",
+        error: err.message,
+      });
+    }
+  }
+);
+
 // Update Profil User (Admin atau User Sendiri)
 router.put("/profile/:id?", auth, async (req, res) => {
   try {
@@ -290,6 +455,14 @@ router.put("/profile/:id?", auth, async (req, res) => {
 
     const updates = { ...req.body };
 
+    const validGenders = ["Laki-laki", "Perempuan", "Lainnya"];
+    if (updates.gender && !validGenders.includes(updates.gender)) {
+      return res.status(400).json({
+        success: false,
+        message: `Gender harus salah satu dari: ${validGenders.join(", ")}`,
+      });
+    }
+
     if (updates.password) {
       const user = await User.findById(targetId);
       if (!user) {
@@ -303,7 +476,6 @@ router.put("/profile/:id?", auth, async (req, res) => {
       delete updates.password;
     }
 
-    // Validasi addresses jika ada
     if (updates.addresses && Array.isArray(updates.addresses)) {
       for (const addr of updates.addresses) {
         if (!addr.streetAddress || !addr.recipientName || !addr.phoneNumber) {
@@ -337,6 +509,7 @@ router.put("/profile/:id?", auth, async (req, res) => {
     });
   }
 });
+
 // Hapus Akun User
 router.delete("/profile", auth, async (req, res) => {
   try {
@@ -359,43 +532,37 @@ router.get("/customers", auth, async (req, res) => {
       });
     }
 
-    // Pagination parameters
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
 
-    // Sorting parameters
-    const sortBy = req.query.sortBy || "createdAt"; // Default sort by createdAt
-    const sortOrder = req.query.sortOrder === "desc" ? -1 : 1; // asc = 1, desc = -1
+    const sortBy = req.query.sortBy || "createdAt";
+    const sortOrder = req.query.sortOrder === "desc" ? -1 : 1;
 
-    // Validasi sortBy agar hanya menerima field yang diizinkan
     const allowedSortFields = ["name", "createdAt"];
     const sortField = allowedSortFields.includes(sortBy) ? sortBy : "createdAt";
 
-    // Hitung total dokumen
     const totalCustomers = await User.countDocuments({ role: "customer" });
 
-    // Ambil data dengan sorting dinamis dan case-insensitive untuk field name
     const query = User.find({ role: "customer" })
-      .select("name email phoneNumber createdAt _id")
+      .select("name email phoneNumber createdAt _id avatar")
       .skip(skip)
       .limit(limit)
       .sort({ [sortField]: sortOrder });
 
-    // Tambahkan collation untuk case-insensitive sorting pada field name
     if (sortField === "name") {
-      query.collation({ locale: "en", strength: 2 }); // Case-insensitive
+      query.collation({ locale: "en", strength: 2 });
     }
 
     const customers = await query.lean();
 
-    // Format data untuk frontend
     const formattedCustomers = customers.map((customer) => ({
       _id: customer._id,
       name: customer.name,
       email: customer.email,
       phoneNumber: customer.phoneNumber,
-      registrationDate: customer.createdAt, // Konsisten dengan frontend
+      avatar: customer.avatar,
+      registrationDate: customer.createdAt,
     }));
 
     res.status(200).json({
@@ -436,7 +603,7 @@ router.get("/customers/:id/summary", auth, async (req, res) => {
     }
 
     const customer = await User.findById(id)
-      .select("name email phoneNumber gender addresses role")
+      .select("name email phoneNumber gender addresses role avatar")
       .lean();
 
     if (!customer || customer.role !== "customer") {
@@ -473,7 +640,8 @@ router.get("/customers/:id/summary", auth, async (req, res) => {
         email: customer.email,
         phoneNumber: customer.phoneNumber,
         gender: customer.gender,
-        address: customer.addresses.length > 0 ? customer.addresses[0] : null, // Pastikan ini ada
+        avatar: customer.avatar,
+        address: customer.addresses.length > 0 ? customer.addresses[0] : null,
         orderSummary,
       },
     };
@@ -506,7 +674,6 @@ router.get("/customers/:id/orders", auth, async (req, res) => {
       });
     }
 
-    // Cari customer untuk memastikan ada
     const customer = await User.findById(id).lean();
     if (!customer || customer.role !== "customer") {
       return res.status(404).json({
@@ -515,10 +682,9 @@ router.get("/customers/:id/orders", auth, async (req, res) => {
       });
     }
 
-    // Ambil semua order untuk user ini dengan populate data user dan product
     const orders = await Order.find({ user: id })
-      .populate("user", "name phoneNumber") // Populate nama dan nomor telepon user
-      .populate("items.product", "name images") // Populate nama dan gambar produk
+      .populate("user", "name phoneNumber avatar")
+      .populate("items.product", "name images")
       .lean();
 
     res.status(200).json({
@@ -532,6 +698,128 @@ router.get("/customers/:id/orders", auth, async (req, res) => {
       message: "Gagal mengambil riwayat transaksi",
       error: err.message,
     });
+  }
+});
+
+// Tambah Alamat Baru
+router.post("/address", auth, async (req, res) => {
+  try {
+    const {
+      recipientName,
+      phoneNumber,
+      streetAddress,
+      postalCode,
+      province,
+      city,
+      isPrimary,
+    } = req.body;
+    const user = await User.findById(req.user.id);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User tidak ditemukan",
+      });
+    }
+
+    const newAddress = {
+      recipientName,
+      phoneNumber,
+      streetAddress,
+      postalCode,
+      province,
+      city,
+      isPrimary,
+    };
+
+    user.addresses.push(newAddress);
+    await user.save();
+
+    res.status(201).json({
+      success: true,
+      data: newAddress,
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: "Gagal menambah alamat",
+      error: err.message,
+    });
+  }
+});
+
+// Update Alamat
+router.put("/address/:addressId", auth, async (req, res) => {
+  try {
+    const { addressId } = req.params;
+    const {
+      recipientName,
+      phoneNumber,
+      streetAddress,
+      postalCode,
+      province,
+      city,
+      isPrimary,
+    } = req.body;
+    const user = await User.findById(req.user.id);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User tidak ditemukan",
+      });
+    }
+
+    const address = user.addresses.id(addressId);
+    if (!address) {
+      return res.status(404).json({
+        success: false,
+        message: "Alamat tidak ditemukan",
+      });
+    }
+
+    address.recipientName = recipientName;
+    address.phoneNumber = phoneNumber;
+    address.streetAddress = streetAddress;
+    address.postalCode = postalCode;
+    address.province = province;
+    address.city = city;
+    address.isPrimary = isPrimary;
+
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      data: address,
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: "Gagal memperbarui alamat",
+      error: err.message,
+    });
+  }
+});
+
+// Hapus Alamat
+router.delete("/address/:addressId", auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: "User tidak ditemukan" });
+    }
+
+    user.addresses = user.addresses.filter(
+      (address) => address._id.toString() !== req.params.addressId
+    );
+
+    await user.save();
+
+    res.status(200).json({ message: "Alamat berhasil dihapus" });
+  } catch (err) {
+    res
+      .status(500)
+      .json({ message: "Gagal menghapus alamat", error: err.message });
   }
 });
 

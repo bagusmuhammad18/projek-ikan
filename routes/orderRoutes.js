@@ -105,10 +105,10 @@ router.post(
 router.get("/", auth, async (req, res) => {
   try {
     const orders = await Order.find({ user: req.user.id })
-      .populate("items.product", "name price images")
+      .populate("items.product", "name price images discount")
       .populate("user", "name phoneNumber")
       .sort({ createdAt: -1 });
-    console.log("Orders for user", req.user.id, ":", orders); // Debugging
+
     res.json(orders);
   } catch (err) {
     console.error("Error fetching user orders:", err);
@@ -135,7 +135,6 @@ router.get("/all", auth, async (req, res) => {
       .populate("items.product", "name price images")
       .populate("user", "name phoneNumber")
       .sort({ createdAt: -1 });
-    console.log("All orders:", orders); // Debugging
     res.json(orders);
   } catch (err) {
     console.error("Error fetching all orders:", err);
