@@ -24,6 +24,11 @@ router.post(
     body("shippingAddress")
       .notEmpty()
       .withMessage("Shipping address is required"),
+    body("paymentMethod")
+      .notEmpty()
+      .withMessage("Payment method is required")
+      .isIn(["BCA Virtual Account", "QRIS"])
+      .withMessage("Invalid payment method"),
   ],
   async (req, res) => {
     const errors = validationResult(req);
@@ -77,6 +82,7 @@ router.post(
         items: orderItems,
         totalAmount,
         shippingAddress: req.body.shippingAddress,
+        paymentMethod: req.body.paymentMethod, // Simpan paymentMethod
       });
 
       await newOrder.save();

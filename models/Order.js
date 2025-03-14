@@ -14,6 +14,14 @@ const orderItemSchema = new mongoose.Schema({
     type: Number,
     required: true,
   },
+  discount: {
+    type: Number,
+    default: 0,
+  },
+  discountedPrice: {
+    type: Number,
+    required: true,
+  },
 });
 
 const orderSchema = new mongoose.Schema({
@@ -31,15 +39,20 @@ const orderSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
+  paymentMethod: {
+    type: String,
+    enum: ["BCA Virtual Account", "QRIS"],
+    required: true,
+  },
   status: {
     type: String,
     enum: [
-      "Pending", // Order baru dibuat, belum dibayar
-      "Paid", // Simulasi status 'sudah dibayar'
-      "Processing", // Penjual sedang memproses pesanan
-      "Shipped", // Pesanan dalam pengiriman
-      "Delivered", // Pesanan sudah diterima pembeli
-      "Cancelled", // Pesanan dibatalkan
+      "Pending",
+      "Paid",
+      "Processing",
+      "Shipped",
+      "Delivered",
+      "Cancelled",
     ],
     default: "Pending",
   },

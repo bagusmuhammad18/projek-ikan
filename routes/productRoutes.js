@@ -19,7 +19,6 @@ const fileFilter = (req, file, cb) => {
     "image/webp",
     "image/bmp",
   ];
-
   if (allowedTypes.includes(file.mimetype)) {
     cb(null, true);
   } else {
@@ -55,7 +54,7 @@ const validateProduct = [
   body("stock").isNumeric().withMessage("Stock must be a number"),
   body("discount")
     .optional()
-    .isFloat({ min: 0, max: 100 }) // Diskon dalam persen (0-100)
+    .isFloat({ min: 0, max: 100 })
     .withMessage("Discount must be a percentage between 0 and 100"),
   body("weight").optional().isNumeric().withMessage("Weight must be a number"),
   body("dimensions.height")
@@ -152,32 +151,26 @@ router.get("/", async (req, res) => {
 
     let query = { isPublished: true };
 
-    // Search by name
     if (search) {
       query.name = { $regex: search, $options: "i" };
     }
 
-    // Price filter (menggunakan harga sebelum diskon)
     if (minPrice || maxPrice) {
       query.price = {};
       if (minPrice) query.price.$gte = Number(minPrice);
       if (maxPrice) query.price.$lte = Number(maxPrice);
     }
 
-    // Color filter (case-insensitive dengan $or dan $regex)
     if (color) {
       const colors = Array.isArray(color) ? color : [color];
-      const lowerCaseColors = colors.map((c) => c.toLowerCase());
-      query.$or = lowerCaseColors.map((c) => ({
+      query.$or = colors.map((c) => ({
         "type.color": { $regex: `^${c}$`, $options: "i" },
       }));
     }
 
-    // Size filter (case-insensitive dengan $or dan $regex)
     if (size) {
       const sizes = Array.isArray(size) ? size : [size];
-      const lowerCaseSizes = sizes.map((s) => s.toLowerCase());
-      query.$or = lowerCaseSizes.map((s) => ({
+      query.$or = sizes.map((s) => ({
         "type.size": { $regex: `^${s}$`, $options: "i" },
       }));
     }
@@ -187,10 +180,15 @@ router.get("/", async (req, res) => {
     const skip = (pageNumber - 1) * limitNumber;
 
     const sortOptions = {};
-    if (sortBy) {
-      sortOptions[sortBy] = sortOrder === "desc" ? -1 : 1;
+    // Dukungan untuk sorting berdasarkan 'sales', 'price', atau 'createdAt'
+    if (sortBy === "sales") {
+      sortOptions.sales = sortOrder === "desc" ? -1 : 1;
+    } else if (sortBy === "price") {
+      sortOptions.price = sortOrder === "desc" ? -1 : 1;
+    } else if (sortBy === "createdAt") {
+      sortOptions.createdAt = sortOrder === "desc" ? -1 : 1;
     } else {
-      sortOptions.createdAt = -1;
+      sortOptions.createdAt = -1; // Default: terbaru
     }
 
     const products = await Product.find(query)
@@ -198,7 +196,6 @@ router.get("/", async (req, res) => {
       .skip(skip)
       .limit(limitNumber);
 
-    // Tambahkan harga setelah diskon ke respons
     const productsWithDiscount = products.map((product) => {
       const discountedPrice = calculateDiscountedPrice(
         product.price,
@@ -208,6 +205,7 @@ router.get("/", async (req, res) => {
         ...product.toObject(),
         originalPrice: product.price,
         discountedPrice: discountedPrice,
+        sales: product.sales, // Sertakan sales dalam respons
       };
     });
 
@@ -241,6 +239,7 @@ router.get("/all", async (req, res) => {
         ...product.toObject(),
         originalPrice: product.price,
         discountedPrice: discountedPrice,
+        sales: product.sales, // Sertakan sales
       };
     });
     res.json(productsWithDiscount);
@@ -263,6 +262,7 @@ router.get("/:id", async (req, res) => {
       ...product.toObject(),
       originalPrice: product.price,
       discountedPrice: discountedPrice,
+      sales: product.sales, // Sertakan sales
     };
 
     res.json(productWithDiscount);
@@ -324,7 +324,8 @@ router.post(
         images: imageUrls,
         dimensions,
         type,
-        discount: req.body.discount || 0, // Default 0 jika tidak ada diskon
+        discount: req.body.discount || 0,
+        sales: req.body.sales || 0, // Tambahkan sales, default 0
         isPublished:
           req.body.isPublished !== undefined ? req.body.isPublished : true,
       });
@@ -339,6 +340,7 @@ router.post(
         ...newProduct.toObject(),
         originalPrice: newProduct.price,
         discountedPrice: discountedPrice,
+        sales: newProduct.sales,
       };
 
       res.status(201).json(productWithDiscount);
@@ -389,7 +391,6 @@ router.put(
       const filteredImageUrls = existingImageUrls.filter(
         (url) => !removedImageUrls.includes(url)
       );
-
       let imageUrls = [...filteredImageUrls];
       if (req.files && req.files.length > 0) {
         const uploadPromises = req.files.map((file) =>
@@ -430,10 +431,14 @@ router.put(
           ...req.body,
           images: imageUrls,
           weight: req.body.weight || product.weight,
-          discount: req.body.discount || product.discount || 0, // Gunakan discount yang ada jika tidak diperbarui
+          discount: req.body.discount || product.discount || 0,
+          sales: req.body.sales || product.sales || 0, // Gunakan sales yang ada jika tidak diperbarui
           dimensions,
           type,
-          isPublished: req.body.isPublished || product.isPublished,
+          isPublished:
+            req.body.isPublished !== undefined
+              ? req.body.isPublished
+              : product.isPublished,
         },
         { new: true }
       );
@@ -446,14 +451,14 @@ router.put(
         ...updatedProduct.toObject(),
         originalPrice: updatedProduct.price,
         discountedPrice: discountedPrice,
+        sales: updatedProduct.sales,
       };
 
       res.json(productWithDiscount);
     } catch (err) {
-      res.status(500).json({
-        message: "Failed to update product",
-        error: err.message,
-      });
+      res
+        .status(500)
+        .json({ message: "Failed to update product", error: err.message });
     }
   }
 );

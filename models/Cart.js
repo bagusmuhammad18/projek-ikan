@@ -11,6 +11,8 @@ const cartItemSchema = new mongoose.Schema({
     required: true,
     min: 1,
   },
+  size: { type: String, required: true }, // Tambah field size
+  color: { type: String, required: true }, // Tambah field color
 });
 
 const cartSchema = new mongoose.Schema({

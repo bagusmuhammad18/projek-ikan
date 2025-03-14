@@ -37,6 +37,8 @@ router.post(
     body("quantity")
       .isInt({ gt: 0 })
       .withMessage("Quantity must be greater than 0"),
+    body("size").notEmpty().withMessage("Size is required"),
+    body("color").notEmpty().withMessage("Color is required"),
   ],
   async (req, res) => {
     const errors = validationResult(req);
@@ -45,7 +47,7 @@ router.post(
     }
 
     try {
-      const { productId, quantity } = req.body;
+      const { productId, quantity, size, color } = req.body;
 
       // Validasi dan konversi productId ke ObjectId
       if (!mongoose.Types.ObjectId.isValid(productId)) {
@@ -60,8 +62,12 @@ router.post(
       let cart = await Cart.findOne({ user: req.user.id });
       if (!cart) cart = new Cart({ user: req.user.id, items: [] });
 
+      // Cek apakah item dengan productId, size, dan color sudah ada di keranjang
       const itemIndex = cart.items.findIndex(
-        (item) => item.product.toString() === productId
+        (item) =>
+          item.product.toString() === productId &&
+          item.size === size &&
+          item.color === color
       );
       if (itemIndex > -1) {
         const newQuantity = cart.items[itemIndex].quantity + quantity;
@@ -75,14 +81,14 @@ router.post(
           return res
             .status(400)
             .json({ message: "Quantity exceeds available stock" });
-        cart.items.push({ product: productObjectId, quantity });
+        cart.items.push({ product: productObjectId, quantity, size, color });
       }
 
       cart.updatedAt = new Date();
       await cart.save();
       res.json(cart);
     } catch (err) {
-      console.error("Error in POST /api/cart:", err); // Logging untuk debug
+      console.error("Error in POST /api/cart:", err);
       res
         .status(500)
         .json({ message: "Failed to add item to cart", error: err.message });
@@ -102,6 +108,8 @@ router.put(
     body("quantity")
       .isInt({ gt: 0 })
       .withMessage("Quantity must be greater than 0"),
+    body("size").notEmpty().withMessage("Size is required"),
+    body("color").notEmpty().withMessage("Color is required"),
   ],
   async (req, res) => {
     const errors = validationResult(req);
@@ -110,12 +118,15 @@ router.put(
     }
 
     try {
-      const { productId, quantity } = req.body;
+      const { productId, quantity, size, color } = req.body;
       const cart = await Cart.findOne({ user: req.user.id });
       if (!cart) return res.status(404).json({ message: "Cart not found" });
 
       const itemIndex = cart.items.findIndex(
-        (item) => item.product.toString() === productId
+        (item) =>
+          item.product.toString() === productId &&
+          item.size === size &&
+          item.color === color
       );
       if (itemIndex === -1)
         return res.status(404).json({ message: "Item not found in cart" });
@@ -143,26 +154,48 @@ router.put(
 
 /**
  * DELETE /api/cart/:productId
- * Menghapus item tertentu dari cart berdasarkan productId.
+ * Menghapus item tertentu dari cart berdasarkan productId, size, dan color.
  */
-router.delete("/:productId", auth, async (req, res) => {
-  try {
-    const { productId } = req.params;
-    const cart = await Cart.findOne({ user: req.user.id });
-    if (!cart) return res.status(404).json({ message: "Cart not found" });
+router.delete(
+  "/:productId",
+  auth,
+  [
+    body("size").notEmpty().withMessage("Size is required"),
+    body("color").notEmpty().withMessage("Color is required"),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
 
-    cart.items = cart.items.filter(
-      (item) => item.product.toString() !== productId
-    );
-    cart.updatedAt = new Date();
-    await cart.save();
-    res.json(cart);
-  } catch (err) {
-    res
-      .status(500)
-      .json({ message: "Failed to remove item from cart", error: err.message });
+    try {
+      const { productId } = req.params;
+      const { size, color } = req.body;
+      const cart = await Cart.findOne({ user: req.user.id });
+      if (!cart) return res.status(404).json({ message: "Cart not found" });
+
+      cart.items = cart.items.filter(
+        (item) =>
+          !(
+            item.product.toString() === productId &&
+            item.size === size &&
+            item.color === color
+          )
+      );
+      cart.updatedAt = new Date();
+      await cart.save();
+      res.json(cart);
+    } catch (err) {
+      res
+        .status(500)
+        .json({
+          message: "Failed to remove item from cart",
+          error: err.message,
+        });
+    }
   }
-});
+);
 
 /**
  * DELETE /api/cart
