@@ -1,3 +1,4 @@
+// models/Order.js
 const mongoose = require("mongoose");
 
 const orderItemSchema = new mongoose.Schema({
@@ -24,6 +25,15 @@ const orderItemSchema = new mongoose.Schema({
   },
 });
 
+const shippingAddressSchema = new mongoose.Schema({
+  recipientName: { type: String, required: true },
+  phoneNumber: { type: String, required: true },
+  streetAddress: { type: String, required: true },
+  city: { type: String, required: true },
+  province: { type: String, required: true },
+  postalCode: { type: String, required: true },
+});
+
 const orderSchema = new mongoose.Schema({
   user: {
     type: mongoose.Schema.Types.ObjectId,
@@ -36,8 +46,12 @@ const orderSchema = new mongoose.Schema({
     required: true,
   },
   shippingAddress: {
-    type: String,
+    type: shippingAddressSchema,
     required: true,
+  },
+  shippingCost: {
+    type: Number,
+    default: 0,
   },
   paymentMethod: {
     type: String,
@@ -55,6 +69,10 @@ const orderSchema = new mongoose.Schema({
       "Cancelled",
     ],
     default: "Pending",
+  },
+  trackingNumber: {
+    type: String,
+    default: null,
   },
   createdAt: {
     type: Date,

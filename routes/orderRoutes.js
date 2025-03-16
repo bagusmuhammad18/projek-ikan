@@ -28,7 +28,7 @@ const fileFilter = (req, file, cb) => {
 const upload = multer({
   storage: storage,
   fileFilter: fileFilter,
-  limits: { fileSize: 5 * 1024 * 1024 }, // Batas 5MB sebelum kompresi
+  limits: { fileSize: 0.5 * 1024 * 1024 }, // Batas 5MB sebelum kompresi
 });
 
 const handleMulterError = (err, req, res, next) => {
@@ -36,6 +36,20 @@ const handleMulterError = (err, req, res, next) => {
     return res.status(400).json({ message: err.message });
   } else if (err) {
     return res.status(400).json({ message: err.message });
+  }
+  next();
+};
+
+// Middleware untuk parsing shippingAddress
+const parseShippingAddress = (req, res, next) => {
+  if (req.body.shippingAddress) {
+    try {
+      req.body.shippingAddress = JSON.parse(req.body.shippingAddress);
+    } catch (err) {
+      return res
+        .status(400)
+        .json({ message: "Invalid shippingAddress format" });
+    }
   }
   next();
 };
@@ -94,11 +108,29 @@ router.post(
   auth,
   upload.single("proofOfPayment"),
   handleMulterError,
+  parseShippingAddress,
   [
-    body("shippingAddress")
+    body("shippingAddress.recipientName")
       .notEmpty()
-      .withMessage("Shipping address is required"),
+      .withMessage("Recipient name is required"),
+    body("shippingAddress.phoneNumber")
+      .notEmpty()
+      .withMessage("Phone number is required"),
+    body("shippingAddress.streetAddress")
+      .notEmpty()
+      .withMessage("Street address is required"),
+    body("shippingAddress.city").notEmpty().withMessage("City is required"),
+    body("shippingAddress.province")
+      .notEmpty()
+      .withMessage("Province is required"),
+    body("shippingAddress.postalCode")
+      .notEmpty()
+      .withMessage("Postal code is required"),
     body("paymentMethod").notEmpty().withMessage("Payment method is required"),
+    body("shippingCost")
+      .optional()
+      .isNumeric()
+      .withMessage("Shipping cost must be a number"),
   ],
   async (req, res) => {
     const errors = validationResult(req);
@@ -184,21 +216,29 @@ router.post(
         );
         proofOfPaymentUrl = `https://ucarecdn.com/${fileId}/`;
         console.log("Proof of Payment URL:", proofOfPaymentUrl);
-      } else {
-        console.log("No file uploaded in request");
       }
+
+      const shippingAddress = {
+        recipientName: req.body.shippingAddress.recipientName,
+        phoneNumber: req.body.shippingAddress.phoneNumber,
+        streetAddress: req.body.shippingAddress.streetAddress,
+        city: req.body.shippingAddress.city,
+        province: req.body.shippingAddress.province,
+        postalCode: req.body.shippingAddress.postalCode,
+      };
 
       const newOrder = new Order({
         user: req.user.id,
         items: orderItems,
         totalAmount,
-        shippingAddress: req.body.shippingAddress,
+        shippingAddress,
+        shippingCost: parseFloat(req.body.shippingCost) || 0,
         paymentMethod: req.body.paymentMethod,
-        proofOfPayment: proofOfPaymentUrl, // Pastikan ini ada
+        proofOfPayment: proofOfPaymentUrl,
       });
 
       await newOrder.save();
-      console.log("New Order Saved:", newOrder.toObject()); // Gunakan toObject() untuk log lengkap
+      console.log("New Order Saved:", newOrder.toObject());
 
       await User.findByIdAndUpdate(req.user.id, {
         $push: { orders: newOrder._id },
@@ -224,7 +264,8 @@ router.get("/", auth, async (req, res) => {
     const orders = await Order.find({ user: req.user.id })
       .populate("items.product", "name price images discount")
       .populate("user", "name phoneNumber")
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean(); // Tambahkan .lean() untuk performa
     res.json(orders);
   } catch (err) {
     console.error("Error fetching user orders:", err);
@@ -295,12 +336,10 @@ router.put(
 
     try {
       if (req.user.role !== "admin") {
-        return res
-          .status(403)
-          .json({
-            message:
-              "Akses ditolak. Hanya admin yang dapat mengubah status order.",
-          });
+        return res.status(403).json({
+          message:
+            "Akses ditolak. Hanya admin yang dapat mengubah status order.",
+        });
       }
 
       const { status } = req.body;
@@ -334,19 +373,14 @@ router.put(
             await product.save();
           }
         } else {
-          return res
-            .status(400)
-            .json({
-              message: "Order Pending hanya bisa diubah ke Paid atau Cancelled",
-            });
+          return res.status(400).json({
+            message: "Order Pending hanya bisa diubah ke Paid atau Cancelled",
+          });
         }
       } else {
-        return res
-          .status(400)
-          .json({
-            message:
-              "Hanya order dengan status Pending yang bisa diubah di sini",
-          });
+        return res.status(400).json({
+          message: "Hanya order dengan status Pending yang bisa diubah di sini",
+        });
       }
 
       order.status = status;
