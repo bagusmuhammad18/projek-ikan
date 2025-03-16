@@ -41,7 +41,7 @@ const orderSchema = new mongoose.Schema({
   },
   paymentMethod: {
     type: String,
-    enum: ["BCA Virtual Account", "QRIS"],
+    enum: ["BCA", "QRIS", "Mandiri"],
     required: true,
   },
   status: {
@@ -60,6 +60,7 @@ const orderSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
+  proofOfPayment: { type: String, default: null },
 });
 
 module.exports = mongoose.model("Order", orderSchema);

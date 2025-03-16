@@ -3,11 +3,83 @@ const router = express.Router();
 const Order = require("../models/Order");
 const Cart = require("../models/Cart");
 const Product = require("../models/Product");
-const User = require("../models/User"); // Import User model
+const User = require("../models/User");
 const auth = require("../middleware/auth");
 const { body, validationResult } = require("express-validator");
+const multer = require("multer");
+const axios = require("axios");
+const FormData = require("form-data");
+const sharp = require("sharp");
 
-// Helper untuk menghitung harga setelah diskon
+// Konfigurasi Multer untuk menyimpan file di memory
+const storage = multer.memoryStorage();
+const fileFilter = (req, file, cb) => {
+  const allowedTypes = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+  if (allowedTypes.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(
+      new Error("Hanya file gambar yang diizinkan (jpeg, png, gif, webp)"),
+      false
+    );
+  }
+};
+
+const upload = multer({
+  storage: storage,
+  fileFilter: fileFilter,
+  limits: { fileSize: 5 * 1024 * 1024 }, // Batas 5MB sebelum kompresi
+});
+
+const handleMulterError = (err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    return res.status(400).json({ message: err.message });
+  } else if (err) {
+    return res.status(400).json({ message: err.message });
+  }
+  next();
+};
+
+async function compressImage(fileBuffer) {
+  try {
+    let quality = 80;
+    let compressedBuffer = fileBuffer;
+    let fileSize = fileBuffer.length;
+
+    while (fileSize > 1048576 && quality > 10) {
+      compressedBuffer = await sharp(fileBuffer).jpeg({ quality }).toBuffer();
+      fileSize = compressedBuffer.length;
+      quality -= 10;
+    }
+
+    if (fileSize > 1048576) {
+      throw new Error("Gambar tidak bisa dikompresi di bawah 1MB");
+    }
+
+    return compressedBuffer;
+  } catch (err) {
+    throw new Error("Gagal mengompresi gambar: " + err.message);
+  }
+}
+
+async function uploadToUploadcare(fileBuffer, fileName) {
+  const compressedBuffer = await compressImage(fileBuffer);
+  const formData = new FormData();
+  formData.append("UPLOADCARE_PUB_KEY", process.env.UPLOADCARE_PUBLIC_KEY);
+  formData.append("UPLOADCARE_STORE", "auto");
+  formData.append("file", compressedBuffer, fileName);
+
+  const response = await axios.post(
+    "https://upload.uploadcare.com/base/",
+    formData,
+    {
+      headers: formData.getHeaders(),
+    }
+  );
+
+  return response.data.file;
+}
+
 const calculateDiscountedPrice = (price, discount) => {
   if (!discount || discount <= 0 || discount > 100) return price;
   return price - (price * discount) / 100;
@@ -15,20 +87,18 @@ const calculateDiscountedPrice = (price, discount) => {
 
 /**
  * POST /api/orders
- * Checkout dari shopping cart ke order dengan diskon.
+ * Checkout dari shopping cart atau pembelian langsung dengan bukti pembayaran
  */
 router.post(
   "/",
   auth,
+  upload.single("proofOfPayment"),
+  handleMulterError,
   [
     body("shippingAddress")
       .notEmpty()
       .withMessage("Shipping address is required"),
-    body("paymentMethod")
-      .notEmpty()
-      .withMessage("Payment method is required")
-      .isIn(["BCA Virtual Account", "QRIS"])
-      .withMessage("Invalid payment method"),
+    body("paymentMethod").notEmpty().withMessage("Payment method is required"),
   ],
   async (req, res) => {
     const errors = validationResult(req);
@@ -37,44 +107,85 @@ router.post(
     }
 
     try {
-      const cart = await Cart.findOne({ user: req.user.id }).populate(
-        "items.product"
-      );
-      if (!cart || cart.items.length === 0) {
-        return res.status(400).json({ message: "Cart is empty" });
-      }
+      let orderItems = [];
+      let totalAmount = 0;
 
-      for (const item of cart.items) {
-        if (item.quantity > item.product.stock) {
-          return res.status(400).json({
-            message: `Stok untuk produk ${item.product.name} tidak mencukupi.`,
-          });
+      if (req.body.items) {
+        orderItems = JSON.parse(req.body.items);
+        totalAmount = parseFloat(req.body.totalAmount);
+
+        for (const item of orderItems) {
+          const product = await Product.findById(item.product);
+          if (!product) {
+            return res
+              .status(404)
+              .json({ message: `Produk ${item.product} tidak ditemukan` });
+          }
+          if (item.quantity > product.stock) {
+            return res.status(400).json({
+              message: `Stok untuk produk ${product.name} tidak mencukupi`,
+            });
+          }
+          product.stock -= item.quantity;
+          await product.save();
         }
+      } else {
+        const cart = await Cart.findOne({ user: req.user.id }).populate(
+          "items.product"
+        );
+        if (!cart || cart.items.length === 0) {
+          return res.status(400).json({ message: "Cart is empty" });
+        }
+
+        for (const item of cart.items) {
+          if (item.quantity > item.product.stock) {
+            return res.status(400).json({
+              message: `Stok untuk produk ${item.product.name} tidak mencukupi`,
+            });
+          }
+        }
+
+        orderItems = cart.items.map((item) => {
+          const discountedPrice = calculateDiscountedPrice(
+            item.product.price,
+            item.product.discount
+          );
+          return {
+            product: item.product._id,
+            quantity: item.quantity,
+            price: item.product.price,
+            discount: item.product.discount || 0,
+            discountedPrice: discountedPrice,
+            size: item.size,
+            color: item.color,
+          };
+        });
+
+        totalAmount = orderItems.reduce(
+          (sum, item) => sum + item.quantity * item.discountedPrice,
+          0
+        );
+
+        for (const item of cart.items) {
+          const product = await Product.findById(item.product._id);
+          product.stock -= item.quantity;
+          await product.save();
+        }
+
+        await Cart.findOneAndDelete({ user: req.user.id });
       }
 
-      const orderItems = cart.items.map((item) => {
-        const discountedPrice = calculateDiscountedPrice(
-          item.product.price,
-          item.product.discount
+      let proofOfPaymentUrl = null;
+      if (req.file) {
+        console.log("File Uploaded:", req.file);
+        const fileId = await uploadToUploadcare(
+          req.file.buffer,
+          req.file.originalname
         );
-        return {
-          product: item.product._id,
-          quantity: item.quantity,
-          price: item.product.price,
-          discount: item.product.discount || 0,
-          discountedPrice: discountedPrice,
-        };
-      });
-
-      const totalAmount = orderItems.reduce(
-        (sum, item) => sum + item.quantity * item.discountedPrice,
-        0
-      );
-
-      for (const item of cart.items) {
-        const product = await Product.findById(item.product._id);
-        product.stock -= item.quantity;
-        await product.save();
+        proofOfPaymentUrl = `https://ucarecdn.com/${fileId}/`;
+        console.log("Proof of Payment URL:", proofOfPaymentUrl);
+      } else {
+        console.log("No file uploaded in request");
       }
 
       const newOrder = new Order({
@@ -82,20 +193,20 @@ router.post(
         items: orderItems,
         totalAmount,
         shippingAddress: req.body.shippingAddress,
-        paymentMethod: req.body.paymentMethod, // Simpan paymentMethod
+        paymentMethod: req.body.paymentMethod,
+        proofOfPayment: proofOfPaymentUrl, // Pastikan ini ada
       });
 
       await newOrder.save();
+      console.log("New Order Saved:", newOrder.toObject()); // Gunakan toObject() untuk log lengkap
 
-      // Add the new order to the user's orders array
       await User.findByIdAndUpdate(req.user.id, {
         $push: { orders: newOrder._id },
       });
 
-      await Cart.findOneAndDelete({ user: req.user.id });
-
       res.status(201).json(newOrder);
     } catch (err) {
+      console.error("Checkout error:", err);
       res.status(500).json({
         message: "Failed to place order",
         error: err.message,
@@ -106,7 +217,7 @@ router.post(
 
 /**
  * GET /api/orders
- * Mengambil daftar order pengguna yang sedang login
+ * Mengambil semua order untuk pengguna yang login
  */
 router.get("/", auth, async (req, res) => {
   try {
@@ -114,7 +225,6 @@ router.get("/", auth, async (req, res) => {
       .populate("items.product", "name price images discount")
       .populate("user", "name phoneNumber")
       .sort({ createdAt: -1 });
-
     res.json(orders);
   } catch (err) {
     console.error("Error fetching user orders:", err);
@@ -126,22 +236,21 @@ router.get("/", auth, async (req, res) => {
 
 /**
  * GET /api/orders/all
- * Mengambil semua order di database (hanya untuk admin)
+ * Mengambil semua order (hanya untuk admin)
  */
 router.get("/all", auth, async (req, res) => {
   try {
-    // Cek jika pengguna adalah admin
     if (req.user.role !== "admin") {
       return res.status(403).json({
         message: "Akses ditolak. Hanya admin yang dapat melihat semua order.",
       });
     }
-
     const orders = await Order.find()
-      .populate("items.product", "name price images")
+      .populate("items.product", "name price images discount")
       .populate("user", "name phoneNumber")
       .sort({ createdAt: -1 });
     res.json(orders);
+    console.log("Orders Fetched:", orders);
   } catch (err) {
     console.error("Error fetching all orders:", err);
     res
@@ -152,7 +261,7 @@ router.get("/all", auth, async (req, res) => {
 
 /**
  * GET /api/orders/:id
- * Mengambil detail order tertentu dengan diskon
+ * Mengambil detail order berdasarkan ID (hanya untuk pengguna terkait)
  */
 router.get("/:id", auth, async (req, res) => {
   try {
@@ -172,67 +281,107 @@ router.get("/:id", auth, async (req, res) => {
 
 /**
  * PUT /api/orders/:id/status
- * Update status order
+ * Memperbarui status order (hanya untuk admin)
  */
-router.put("/:id/status", auth, async (req, res) => {
-  try {
-    const { status } = req.body;
-    const validStatuses = [
-      "Pending",
-      "Paid",
-      "Processing",
-      "Shipped",
-      "Delivered",
-      "Cancelled",
-    ];
-
-    if (!validStatuses.includes(status)) {
-      return res.status(400).json({ message: "Invalid status" });
+router.put(
+  "/:id/status",
+  auth,
+  [body("status").notEmpty().withMessage("Status is required")],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
     }
 
-    const order = await Order.findById(req.params.id);
-    if (!order) {
-      return res.status(404).json({ message: "Order not found" });
-    }
+    try {
+      if (req.user.role !== "admin") {
+        return res
+          .status(403)
+          .json({
+            message:
+              "Akses ditolak. Hanya admin yang dapat mengubah status order.",
+          });
+      }
 
-    order.status = status;
-    await order.save();
-    res.json(order);
-  } catch (err) {
-    res.status(500).json({
-      message: "Failed to update order status",
-      error: err.message,
-    });
+      const { status } = req.body;
+      const validStatuses = [
+        "Pending",
+        "Paid",
+        "Processing",
+        "Shipped",
+        "Delivered",
+        "Cancelled",
+      ];
+      if (!validStatuses.includes(status)) {
+        return res.status(400).json({ message: "Invalid status" });
+      }
+
+      const order = await Order.findById(req.params.id).populate(
+        "items.product"
+      );
+      if (!order) {
+        return res.status(404).json({ message: "Order not found" });
+      }
+
+      if (order.status === "Pending") {
+        if (status === "Paid") {
+          // Stok sudah berkurang saat dibuat, tidak perlu kurangi lagi
+        } else if (status === "Cancelled") {
+          // Kembalikan stok saat ditolak
+          for (const item of order.items) {
+            const product = item.product;
+            product.stock += item.quantity;
+            await product.save();
+          }
+        } else {
+          return res
+            .status(400)
+            .json({
+              message: "Order Pending hanya bisa diubah ke Paid atau Cancelled",
+            });
+        }
+      } else {
+        return res
+          .status(400)
+          .json({
+            message:
+              "Hanya order dengan status Pending yang bisa diubah di sini",
+          });
+      }
+
+      order.status = status;
+      await order.save();
+      res.json(order);
+    } catch (err) {
+      console.error("Error updating order status:", err);
+      res
+        .status(500)
+        .json({ message: "Failed to update order status", error: err.message });
+    }
   }
-});
+);
 
 /**
- * PUT /api/orders/:id/pay
- * Simulasi pembayaran order
+ * PUT /api/orders/:id/pay (Hapus atau biarkan untuk simulasi, tidak diperlukan di sini)
  */
 router.put("/:id/pay", auth, async (req, res) => {
   try {
     const order = await Order.findById(req.params.id);
-
     if (!order) {
       return res.status(404).json({ message: "Order not found" });
     }
-
     if (order.status !== "Pending") {
       return res
         .status(400)
         .json({ message: "Order sudah dibayar atau tidak bisa diproses" });
     }
-
     order.status = "Paid";
     await order.save();
-
     res.json({ message: "Pembayaran berhasil (simulasi)", order });
   } catch (err) {
-    res.status(500).json({
-      message: "Failed to simulate payment",
-      error: err.message,
-    });
+    res
+      .status(500)
+      .json({ message: "Failed to simulate payment", error: err.message });
   }
 });
 

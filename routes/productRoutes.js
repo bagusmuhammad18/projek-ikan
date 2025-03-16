@@ -151,28 +151,31 @@ router.get("/", async (req, res) => {
 
     let query = { isPublished: true };
 
+    // Filter pencarian berdasarkan nama produk
     if (search) {
-      query.name = { $regex: search, $options: "i" };
+      query.name = { $regex: new RegExp(search, "i") }; // Gunakan RegExp eksplisit
+      console.log("Search query:", query); // Debugging
     }
 
+    // Filter harga
     if (minPrice || maxPrice) {
       query.price = {};
       if (minPrice) query.price.$gte = Number(minPrice);
       if (maxPrice) query.price.$lte = Number(maxPrice);
     }
 
+    // Filter warna
     if (color) {
       const colors = Array.isArray(color) ? color : [color];
-      query.$or = colors.map((c) => ({
-        "type.color": { $regex: `^${c}$`, $options: "i" },
-      }));
+      query["type.color"] = {
+        $in: colors.map((c) => new RegExp(`^${c}$`, "i")),
+      };
     }
 
+    // Filter ukuran
     if (size) {
       const sizes = Array.isArray(size) ? size : [size];
-      query.$or = sizes.map((s) => ({
-        "type.size": { $regex: `^${s}$`, $options: "i" },
-      }));
+      query["type.size"] = { $in: sizes.map((s) => new RegExp(`^${s}$`, "i")) };
     }
 
     const pageNumber = Math.max(1, Number(page));
@@ -180,7 +183,6 @@ router.get("/", async (req, res) => {
     const skip = (pageNumber - 1) * limitNumber;
 
     const sortOptions = {};
-    // Dukungan untuk sorting berdasarkan 'sales', 'price', atau 'createdAt'
     if (sortBy === "sales") {
       sortOptions.sales = sortOrder === "desc" ? -1 : 1;
     } else if (sortBy === "price") {
@@ -205,7 +207,7 @@ router.get("/", async (req, res) => {
         ...product.toObject(),
         originalPrice: product.price,
         discountedPrice: discountedPrice,
-        sales: product.sales, // Sertakan sales dalam respons
+        sales: product.sales,
       };
     });
 
@@ -222,6 +224,7 @@ router.get("/", async (req, res) => {
       },
     });
   } catch (err) {
+    console.error("Error fetching products:", err);
     res.status(500).json({ message: "Server error", error: err.message });
   }
 });
