@@ -322,12 +322,18 @@ router.get("/:id", auth, async (req, res) => {
 
 /**
  * PUT /api/orders/:id/status
- * Memperbarui status order (hanya untuk admin)
+ * Memperbarui status order dan nomor resi (hanya untuk admin)
  */
 router.put(
   "/:id/status",
   auth,
-  [body("status").notEmpty().withMessage("Status is required")],
+  [
+    body("status").notEmpty().withMessage("Status is required"),
+    body("trackingNumber")
+      .optional()
+      .isString()
+      .withMessage("Tracking number must be a string"),
+  ],
   async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -342,7 +348,7 @@ router.put(
         });
       }
 
-      const { status } = req.body;
+      const { status, trackingNumber } = req.body;
       const validStatuses = [
         "Pending",
         "Paid",
@@ -377,9 +383,14 @@ router.put(
             message: "Order Pending hanya bisa diubah ke Paid atau Cancelled",
           });
         }
-      } else {
+      } else if (order.status === "Paid" && status === "Shipped") {
+        // Izinkan perubahan dari Paid ke Shipped
+        if (trackingNumber) {
+          order.trackingNumber = trackingNumber;
+        }
+      } else if (order.status !== "Paid") {
         return res.status(400).json({
-          message: "Hanya order dengan status Pending yang bisa diubah di sini",
+          message: "Hanya order dengan status Paid yang bisa diubah ke Shipped",
         });
       }
 
