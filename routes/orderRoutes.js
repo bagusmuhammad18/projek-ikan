@@ -277,26 +277,32 @@ router.get("/", auth, async (req, res) => {
 
 /**
  * GET /api/orders/all
- * Mengambil semua order (hanya untuk admin)
+ * Mengambil semua order (untuk admin) atau order pengguna sendiri (untuk user biasa)
  */
 router.get("/all", auth, async (req, res) => {
   try {
-    if (req.user.role !== "admin") {
-      return res.status(403).json({
-        message: "Akses ditolak. Hanya admin yang dapat melihat semua order.",
-      });
+    let orders;
+    if (req.user.role === "admin") {
+      // Jika pengguna adalah admin, ambil semua order
+      orders = await Order.find()
+        .populate("items.product", "name price images discount")
+        .populate("user", "name phoneNumber")
+        .sort({ createdAt: -1 });
+    } else {
+      // Jika pengguna bukan admin, ambil hanya order milik mereka sendiri
+      orders = await Order.find({ user: req.user.id })
+        .populate("items.product", "name price images discount")
+        .populate("user", "name phoneNumber")
+        .sort({ createdAt: -1 });
     }
-    const orders = await Order.find()
-      .populate("items.product", "name price images discount")
-      .populate("user", "name phoneNumber")
-      .sort({ createdAt: -1 });
+
     res.json(orders);
     console.log("Orders Fetched:", orders);
   } catch (err) {
-    console.error("Error fetching all orders:", err);
+    console.error("Error fetching orders:", err);
     res
       .status(500)
-      .json({ message: "Failed to retrieve all orders", error: err.message });
+      .json({ message: "Failed to retrieve orders", error: err.message });
   }
 });
 
