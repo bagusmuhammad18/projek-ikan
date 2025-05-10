@@ -1,11 +1,6 @@
 const mongoose = require("mongoose");
 
 const productSchema = new mongoose.Schema({
-  sku: {
-    type: String,
-    required: true,
-    trim: true,
-  },
   name: {
     type: String,
     required: true,
@@ -15,40 +10,48 @@ const productSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
-  price: {
-    type: Number,
-    required: true,
-    min: 0,
-  },
   seller: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "User",
     required: true,
   },
-  stock: {
-    type: Number,
-    required: true,
-    min: 0,
-  },
   images: {
     type: [String],
     required: false,
   },
-  discount: {
-    type: Number,
-    default: 0,
-  },
   weight: {
     type: Number,
+    required: false,
   },
   dimensions: {
     height: { type: Number },
     length: { type: Number },
-    width: { type: Number },
   },
   type: {
-    color: { type: [String] },
+    jenis: { type: [String] },
     size: { type: [String] },
+  },
+  stocks: [
+    {
+      jenis: { type: String, required: true },
+      size: { type: String, required: true },
+      stock: { type: Number, required: true, min: 0 },
+      price: { type: Number, required: true, min: 0 },
+      sku: { type: String, required: true, trim: true },
+      discount: { type: Number, default: 0, min: 0, max: 100 },
+    },
+  ],
+  price: {
+    type: Number,
+    required: false,
+  },
+  discount: {
+    type: Number,
+    required: false,
+  },
+  stock: {
+    type: Number,
+    required: false,
   },
   isPublished: {
     type: Boolean,
