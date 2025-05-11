@@ -110,9 +110,6 @@ const validateProduct = [
             "Each stock entry must have a valid price (number >= 0)"
           );
         }
-        if (!stock.sku || typeof stock.sku !== "string") {
-          throw new Error("Each stock entry must have a valid SKU");
-        }
         if (
           stock.discount !== undefined &&
           (typeof stock.discount !== "number" ||
@@ -215,22 +212,7 @@ router.get("/", async (req, res) => {
       totalItems: total,
     };
 
-    // Transformasi produk untuk menyertakan originalPrice dan discountedPrice
-    const transformedProducts = products.map((product) => {
-      const stock =
-        product.stocks && product.stocks.length > 0 ? product.stocks[0] : null;
-      const originalPrice = stock ? stock.price : 0;
-      const discountedPrice = stock
-        ? stock.price - (stock.price * (stock.discount || 0)) / 100
-        : 0;
-      return {
-        ...product.toObject(),
-        originalPrice,
-        discountedPrice,
-      };
-    });
-
-    res.json({ products: transformedProducts, pagination });
+    res.json({ products, pagination });
   } catch (err) {
     console.error("Error fetching products:", err);
     res
@@ -243,19 +225,7 @@ router.get("/", async (req, res) => {
 router.get("/all", async (req, res) => {
   try {
     const products = await Product.find();
-    const productsWithDiscount = products.map((product) => {
-      const updatedStocks = product.stocks.map((stock) => ({
-        ...stock,
-        originalPrice: stock.price,
-        discountedPrice: calculateDiscountedPrice(stock.price, stock.discount),
-      }));
-      return {
-        ...product.toObject(),
-        stocks: updatedStocks,
-        sales: product.sales,
-      };
-    });
-    res.json(productsWithDiscount);
+    res.json(products);
   } catch (err) {
     res.status(500).json({ message: "Server error" });
   }
@@ -266,19 +236,7 @@ router.get("/:id", async (req, res) => {
   try {
     const product = await Product.findById(req.params.id);
     if (!product) return res.status(404).json({ message: "Product not found" });
-
-    const updatedStocks = product.stocks.map((stock) => ({
-      ...stock,
-      originalPrice: stock.price,
-      discountedPrice: calculateDiscountedPrice(stock.price, stock.discount),
-    }));
-    const productWithDiscount = {
-      ...product.toObject(),
-      stocks: updatedStocks,
-      sales: product.sales,
-    };
-
-    res.json(productWithDiscount);
+    res.json(product);
   } catch (err) {
     res.status(500).json({ message: "Server error", error: err.message });
   }
@@ -290,7 +248,7 @@ router.post(
   checkAdmin,
   upload.array("images", 5),
   handleMulterError,
-  parseJSONFields, // Add the new middleware
+  parseJSONFields,
   validateProduct,
   async (req, res) => {
     const errors = validationResult(req);
@@ -311,7 +269,6 @@ router.post(
         }
       }
 
-      // No need to parse dimensions, type, stocks again since parseJSONFields did it
       const dimensions = req.body.dimensions || { height: 0, length: 0 };
       const type = req.body.type || { jenis: [], size: [] };
       const stocks = req.body.stocks || [];
@@ -329,19 +286,7 @@ router.post(
       });
 
       await newProduct.save();
-
-      const updatedStocks = newProduct.stocks.map((stock) => ({
-        ...stock._doc, // Use _doc to get the raw object
-        originalPrice: stock.price,
-        discountedPrice: calculateDiscountedPrice(stock.price, stock.discount),
-      }));
-      const productWithDiscount = {
-        ...newProduct.toObject(),
-        stocks: updatedStocks,
-        sales: newProduct.sales,
-      };
-
-      res.status(201).json(productWithDiscount);
+      res.status(201).json(newProduct);
     } catch (err) {
       console.error("Error creating product:", err);
       res
@@ -450,18 +395,7 @@ router.put(
         { new: true }
       );
 
-      const updatedStocks = updatedProduct.stocks.map((stock) => ({
-        ...stock,
-        originalPrice: stock.price,
-        discountedPrice: calculateDiscountedPrice(stock.price, stock.discount),
-      }));
-      const productWithDiscount = {
-        ...updatedProduct.toObject(),
-        stocks: updatedStocks,
-        sales: updatedProduct.sales,
-      };
-
-      res.json(productWithDiscount);
+      res.json(updatedProduct);
     } catch (err) {
       res
         .status(500)
