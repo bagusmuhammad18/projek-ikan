@@ -11,8 +11,30 @@ const cartItemSchema = new mongoose.Schema({
     required: true,
     min: 1,
   },
-  size: { type: String, required: true }, // Tambah field size
-  color: { type: String, required: true }, // Tambah field color
+  jenis: {
+    type: String,
+    required: [true, "Jenis is required"],
+    trim: true,
+  },
+  size: {
+    type: String,
+    required: [true, "Size is required"],
+    trim: true,
+  },
+  color: {
+    type: String,
+    required: false,
+    default: null,
+  },
+});
+
+// Middleware untuk memperbaiki item lama dengan 'color'
+cartItemSchema.pre("validate", function (next) {
+  if (this.color && !this.jenis) {
+    this.jenis = this.color;
+    this.color = null;
+  }
+  next();
 });
 
 const cartSchema = new mongoose.Schema({
@@ -27,6 +49,11 @@ const cartSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
+});
+
+// Middleware untuk logging cart sebelum disimpan
+cartSchema.pre("save", function (next) {
+  next();
 });
 
 module.exports = mongoose.model("Cart", cartSchema);

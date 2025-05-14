@@ -23,6 +23,21 @@ const orderItemSchema = new mongoose.Schema({
     type: Number,
     required: true,
   },
+  size: {
+    type: String,
+    required: true,
+    default: "default",
+  },
+  jenis: {
+    type: String,
+    required: true,
+    default: "default",
+  },
+  color: {
+    type: String,
+    required: true,
+    default: "default",
+  },
 });
 
 const shippingAddressSchema = new mongoose.Schema({
@@ -55,7 +70,7 @@ const orderSchema = new mongoose.Schema({
   },
   paymentMethod: {
     type: String,
-    enum: ["BCA", "QRIS", "Mandiri"],
+    enum: ["bank_jateng", "cod", "qris"],
     required: true,
   },
   status: {
@@ -74,6 +89,7 @@ const orderSchema = new mongoose.Schema({
     type: String,
     default: null,
   },
+  codProof: { type: String, default: null }, // Field untuk bukti COD
   createdAt: {
     type: Date,
     default: Date.now,
