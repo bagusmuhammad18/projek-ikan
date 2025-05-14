@@ -22,6 +22,7 @@ app.use((req, res, next) => {
     "http://localhost:5173",
     "https://iwak-seven.vercel.app",
     "https://iwak.onrender.com",
+    "https://siphiko.vercel.app",
   ];
   const origin = req.headers.origin;
 
