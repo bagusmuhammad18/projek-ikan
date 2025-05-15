@@ -179,7 +179,6 @@ router.post(
           await product.save();
         }
 
-        // Hapus keranjang setelah checkout, karena ini berasal dari cart
         await Cart.findOneAndDelete({ user: req.user.id });
       } else {
         const cart = await Cart.findOne({ user: req.user.id }).populate(
@@ -478,13 +477,13 @@ router.put(
             return res.status(400).json({ message: "Bukti COD diperlukan" });
           }
           console.log("Mengunggah bukti COD:", req.file.originalname);
-          const codProofUrl = await uploadImage(
+          const codProofUrl = await uploadToUploadcare(
             req.file.buffer,
             req.file.originalname
           );
-          order.codProof = codProofUrl;
+          order.codProof = `https://ucarecdn.com/${codProofUrl}/`;
           order.shippingMethod = "COD";
-          console.log("Bukti COD berhasil diunggah:", codProofUrl);
+          console.log("Bukti COD berhasil diunggah:", order.codProof);
         } else {
           order.shippingMethod = "courier";
           console.log("Metode pengiriman: courier");
@@ -499,7 +498,13 @@ router.put(
       order.status = status;
       await order.save();
       console.log("Order berhasil disimpan:", order._id, order);
-      res.json(order);
+
+      // Pastikan mengembalikan data lengkap termasuk proofOfPayment dan codProof
+      res.json({
+        ...order.toObject(),
+        proofOfPayment: order.proofOfPayment,
+        codProof: order.codProof,
+      });
     } catch (err) {
       console.error("Error saat memperbarui status order:", {
         message: err.message,
