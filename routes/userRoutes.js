@@ -33,8 +33,14 @@ const logger = winston.createLogger({
 // Middleware Rate Limiting untuk mencegah brute-force attack
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 menit
-  max: 100, // Maksimal 100 request dalam 15 menit
-  message: { message: "Terlalu banyak percobaan, coba lagi nanti." },
+  max: 5, // Maksimal 5 percobaan GAGAL per akun dalam 15 menit
+  message: {
+    message: "Terlalu banyak percobaan login untuk akun ini, coba lagi nanti.",
+  },
+  keyGenerator: (req, res) => {
+    return req.body.email || req.ip; // Gunakan email jika ada, fallback ke IP
+  },
+  skipSuccessfulRequests: true, // Hanya hitung percobaan yang GAGAL
 });
 
 // Konfigurasi Multer untuk menyimpan file di memory dengan filter gambar
@@ -394,13 +400,26 @@ router.post(
 router.post(
   "/reset-password/:token",
   [
+    // Salin validasi password dari rute /register
     body("password")
-      .isLength({ min: 6 })
-      .withMessage("Password minimal 6 karakter"),
+      .isLength({ min: 8 })
+      .withMessage("Password minimal 8 karakter")
+      .matches(/[A-Z]/)
+      .withMessage("Password harus mengandung minimal 1 huruf kapital")
+      .matches(/[a-z]/)
+      .withMessage("Password harus mengandung minimal 1 huruf kecil")
+      .matches(/[0-9]/)
+      .withMessage("Password harus mengandung minimal 1 angka")
+      .matches(/[!@#$%^&*(),.?":{}|<>]/)
+      .withMessage("Password harus mengandung minimal 1 simbol khusus")
+      .not()
+      .matches(/\s/)
+      .withMessage("Password tidak boleh mengandung spasi"),
   ],
   async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
+      // Kirim semua error validasi agar frontend bisa menampilkannya jika mau
       return res.status(400).json({ errors: errors.array() });
     }
 
@@ -417,19 +436,32 @@ router.post(
         resetPasswordExpire: { $gt: Date.now() },
       });
 
-      if (!user)
-        return res.status(400).json({ message: "Token invalid atau expired" });
+      if (!user) {
+        return res
+          .status(400)
+          .json({ message: "Token invalid atau kedaluwarsa" }); // Pesan lebih jelas
+      }
 
-      user.password = password;
+      user.password = password; // Model User akan menghash password secara otomatis jika ada pre-save hook
       user.resetPasswordToken = undefined;
       user.resetPasswordExpire = undefined;
 
       await user.save();
-      res.json({ message: "Password berhasil direset" });
+      logger.info(`Password berhasil direset untuk user: ${user.email}`);
+      res.json({
+        message:
+          "Password berhasil direset. Silakan login dengan password baru Anda.",
+      });
     } catch (err) {
-      res
-        .status(500)
-        .json({ message: "Gagal reset password", error: err.message });
+      logger.error("Gagal reset password", {
+        token,
+        error: err.message,
+        stack: err.stack,
+      });
+      res.status(500).json({
+        message: "Gagal reset password internal. Silakan coba lagi nanti.",
+        error: err.message,
+      });
     }
   }
 );

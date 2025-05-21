@@ -80,7 +80,7 @@ const fileFilter = (req, file, cb) => {
 const upload = multer({
   storage: storage,
   fileFilter: fileFilter,
-  limits: { fileSize: 5 * 1024 * 1024 }, // Batas ukuran file 5MB sebelum kompresi
+  limits: { fileSize: 2 * 1024 * 1024 }, // Batas ukuran file 2MB sebelum kompresi
 });
 
 // Middleware untuk menangani error Multer
@@ -495,13 +495,11 @@ router.put(
           .json({ message: "Validation failed", errors: err.errors });
       }
       if (err.name === "CastError") {
-        return res
-          .status(400)
-          .json({
-            message: `Data type error: ${err.message}`,
-            path: err.path,
-            value: err.value,
-          });
+        return res.status(400).json({
+          message: `Data type error: ${err.message}`,
+          path: err.path,
+          value: err.value,
+        });
       }
       res
         .status(500)
