@@ -1,3 +1,4 @@
+const winston = require("winston");
 const express = require("express");
 const router = express.Router();
 const User = require("../models/User");
@@ -15,6 +16,19 @@ const multer = require("multer");
 const axios = require("axios");
 const FormData = require("form-data");
 const sharp = require("sharp");
+
+// Logger configuration
+const logger = winston.createLogger({
+  level: "info",
+  format: winston.format.combine(
+    winston.format.timestamp(),
+    winston.format.json()
+  ),
+  transports: [
+    new winston.transports.File({ filename: "logs/reset-password.log" }),
+    new winston.transports.Console(),
+  ],
+});
 
 // Middleware Rate Limiting untuk mencegah brute-force attack
 const limiter = rateLimit({
@@ -248,33 +262,130 @@ router.post(
   async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
+      logger.warn("Validasi email gagal", {
+        errors: errors.array(),
+        email: req.body.email,
+      });
       return res.status(400).json({ errors: errors.array() });
     }
 
     try {
       const { email } = req.body;
-      const user = await User.findOne({ email });
+      logger.info("Permintaan reset password diterima", { email });
 
-      if (!user)
-        return res.status(404).json({ message: "User tidak ditemukan" });
+      const user = await User.findOne({ email });
+      if (!user) {
+        logger.warn("User tidak ditemukan untuk reset password", { email });
+        // Penting: Untuk keamanan, bahkan jika user tidak ditemukan, kirim respons seolah-olah email akan dikirim.
+        // Ini mencegah penyerang mengetahui email mana yang terdaftar.
+        // Namun, untuk logging internal, Anda tetap tahu user tidak ditemukan.
+        return res.json({
+          message:
+            "Jika email terdaftar, instruksi reset password akan dikirim. Periksa email dan spam anda",
+        });
+      }
 
       const resetToken = user.generateResetPasswordToken();
       await user.save();
+      logger.info("Token reset password dibuat", {
+        email,
+        user: user.name,
+        resetToken,
+      });
 
       const resetUrl = `${process.env.CLIENT_URL}/reset-password/${resetToken}`;
+      const appName = "Marketplace Siphiko"; // Ganti dengan nama aplikasi Anda
+      const supportEmail = "dukungan@marketplaceiwak.com"; // Ganti dengan email support Anda
+
       const mailOptions = {
-        from: process.env.EMAIL_USER,
+        from: `"${appName}" <noreply.marketplaceiwak@gmail.com>`, // Nama pengirim lebih baik
         to: user.email,
-        subject: "Reset Password - Marketplace",
-        html: `<h3>Reset Password</h3><p>Klik link berikut:</p><a href="${resetUrl}">${resetUrl}</a><p>Link ini berlaku selama 1 jam.</p>`,
+        subject: `Reset Password Akun ${appName} Anda`,
+        html: `
+          <!DOCTYPE html>
+          <html lang="id">
+          <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Reset Password</title>
+            <style>
+              body { margin: 0; padding: 0; background-color: #f4f4f4; font-family: Arial, sans-serif; }
+              .container { max-width: 600px; margin: 20px auto; background-color: #ffffff; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+              .header { text-align: center; padding-bottom: 20px; border-bottom: 1px solid #eeeeee; }
+              .header img { max-width: 150px; /* Sesuaikan ukuran logo Anda */ }
+              .content { padding: 20px 0; text-align: left; line-height: 1.6; color: #333333; }
+              .content h1 { color: #003D47; font-size: 24px; margin-bottom: 15px; }
+              .content p { margin-bottom: 15px; }
+              .button-container { text-align: center; margin: 20px 0; }
+              .button {
+                background-color: #003D47; /* Warna utama aplikasi Anda */
+                color: #ffffff !important; /* Penting untuk menimpa style default <a> */
+                padding: 12px 25px;
+                text-decoration: none;
+                border-radius: 5px;
+                font-weight: bold;
+                display: inline-block;
+              }
+              .footer { text-align: center; padding-top: 20px; border-top: 1px solid #eeeeee; font-size: 12px; color: #777777; }
+              .footer p { margin-bottom: 5px; }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              
+              <div class="content">
+                <h1>Permintaan Reset Password</h1>
+                <p>Halo ${user.name || "Pengguna"},</p>
+                <p>Kami menerima permintaan untuk mengatur ulang kata sandi akun ${appName} Anda. Klik tombol di bawah ini untuk melanjutkan:</p>
+                <div class="button-container">
+                  <a href="${resetUrl}" target="_blank" class="button">Reset Password Saya</a>
+                </div>
+                <p>Link ini akan kedaluwarsa dalam 1 jam. Jika Anda tidak meminta reset password, Anda bisa mengabaikan email ini dengan aman.</p>
+                <p>Jika tombol di atas tidak berfungsi, salin dan tempel URL berikut ke browser Anda:</p>
+                <p><a href="${resetUrl}" target="_blank" style="color: #003D47; text-decoration: underline;">${resetUrl}</a></p>
+              </div>
+              <div class="footer">
+                <p>© ${new Date().getFullYear()} ${appName}. Semua hak dilindungi.</p>
+                <p>Jika Anda memiliki pertanyaan, hubungi kami di WhatsApp: 085713561686.</p>
+                <!-- <p>Alamat Perusahaan Anda (jika perlu)</p> -->
+              </div>
+            </div>
+          </body>
+          </html>
+        `,
+        // Sangat disarankan untuk menyertakan versi plain text
+        text: `
+          Halo ${user.name || "Pengguna"},
+
+          Kami menerima permintaan untuk mengatur ulang kata sandi akun ${appName} Anda.
+          Silakan kunjungi link berikut untuk mengatur ulang kata sandi Anda:
+          ${resetUrl}
+
+          Link ini akan kedaluwarsa dalam 1 jam. Jika Anda tidak meminta reset password, Anda bisa mengabaikan email ini dengan aman.
+
+          Jika Anda memiliki pertanyaan, hubungi kami di ${supportEmail}.
+
+          Terima kasih,
+          Tim ${appName}
+        `,
       };
 
       await transporter.sendMail(mailOptions);
-      res.json({ message: "Email reset telah dikirim" });
+      logger.info("Email reset password berhasil dikirim", { email, resetUrl });
+      res.json({
+        message:
+          "Jika email terdaftar, instruksi reset password akan dikirim. Periksa email dan spam anda",
+      });
     } catch (err) {
-      res
-        .status(500)
-        .json({ message: "Gagal mengirim email", error: err.message });
+      logger.error("Gagal mengirim email reset password", {
+        email: req.body.email,
+        error: err.message,
+        stack: err.stack,
+      });
+      res.status(500).json({
+        message: "Gagal mengirim email. Silakan coba lagi nanti.",
+        error: err.message,
+      }); // Jangan expose err.message ke client di production jika sensitif
     }
   }
 );

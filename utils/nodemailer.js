@@ -1,12 +1,10 @@
 const nodemailer = require("nodemailer");
 
-// Konfigurasi transporter untuk Mailtrap
 const transporter = nodemailer.createTransport({
-  host: "sandbox.smtp.mailtrap.io",
-  port: 2525,
+  service: "gmail",
   auth: {
-    user: "c2305e5bf87632", // Ganti dengan username Mailtrap kamu
-    pass: "c6ec60fdfa951c", // Ganti dengan password Mailtrap kamu
+    user: "noreply.marketplaceiwak@gmail.com",
+    pass: process.env.GMAIL_APP_PASSWORD, // App Password dari langkah 1
   },
 });
 
