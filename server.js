@@ -21,7 +21,7 @@ app.use((req, res, next) => {
   const allowedOrigins = [
     "http://localhost:5173",
     "https://iwak-seven.vercel.app",
-    "https://iwak.onrender.com",
+    "http://localhost:5000",
     "https://siphiko.vercel.app",
   ];
   const origin = req.headers.origin;

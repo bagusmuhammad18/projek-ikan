@@ -1,3 +1,4 @@
+// User.js
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 const crypto = require("crypto");
@@ -29,12 +30,19 @@ const userSchema = new mongoose.Schema({
     default: "Lainnya",
   },
   role: { type: String, enum: ["customer", "admin"], default: "customer" },
-  avatar: { type: String, default: null }, // Tambahkan field avatar
+  avatar: { type: String, default: null },
   createdAt: { type: Date, default: Date.now },
-  resetPasswordToken: String,
-  resetPasswordExpire: Date,
   orders: [{ type: mongoose.Schema.Types.ObjectId, ref: "Order", default: [] }],
   addresses: { type: [addressSchema], default: [] },
+
+  // Fields untuk verifikasi email
+  isVerified: { type: Boolean, default: false },
+  verificationToken: String,
+  verificationTokenExpire: Date,
+
+  // Fields untuk reset password
+  resetPasswordToken: String,
+  resetPasswordExpire: Date,
 });
 
 // Hash password sebelum menyimpan user
@@ -66,6 +74,17 @@ userSchema.methods.generateResetPasswordToken = function () {
     .digest("hex");
   this.resetPasswordExpire = Date.now() + 3600000; // 1 jam
   return resetToken;
+};
+
+// Method untuk generate token verifikasi email
+userSchema.methods.generateVerificationToken = function () {
+  const verificationToken = crypto.randomBytes(20).toString("hex");
+  this.verificationToken = crypto
+    .createHash("sha256")
+    .update(verificationToken)
+    .digest("hex");
+  this.verificationTokenExpire = Date.now() + 24 * 3600000; // 24 jam
+  return verificationToken; // Kembalikan token asli untuk dikirim via email
 };
 
 const User = mongoose.model("User", userSchema);

@@ -5,7 +5,7 @@ const path = require("path");
 const swaggerUrlLocal =
   process.env.LOCAL_SWAGGER_URL || "http://localhost:5000/api-docs";
 const swaggerUrlProd =
-  process.env.PROD_SWAGGER_URL || "https://iwak.onrender.com/api-docs";
+  process.env.PROD_SWAGGER_URL || "http://localhost:5000/api-docs";
 
 const options = {
   definition: {
@@ -21,7 +21,7 @@ const options = {
         description: "Local Server",
       },
       {
-        url: "https://iwak.onrender.com/api",
+        url: "http://localhost:5000/api",
         description: "Production Server",
       },
     ],

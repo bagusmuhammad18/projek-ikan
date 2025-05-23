@@ -1,0 +1,46 @@
+{"level":"info","message":"Verification email sent to bagusmuhammadfajar27@gmail.com","timestamp":"2025-05-23T13:56:17.860Z"}
+{"level":"info","message":"Email verified successfully for user: bagusmuhammadfajar27@gmail.com","timestamp":"2025-05-23T13:56:39.403Z"}
+{"level":"warn","message":"Invalid or expired verification token attempt: a280029ee8fbf8428820208eeec89250c4a12ad7","timestamp":"2025-05-23T13:56:39.436Z"}
+{"level":"info","message":"User logged in successfully: bagusmuhammadfajar27@gmail.com","timestamp":"2025-05-23T13:56:56.094Z"}
+{"level":"warn","message":"Login failed: Email not verified for bagus@gmail.com","timestamp":"2025-05-23T13:57:27.384Z"}
+{"level":"warn","message":"Login failed: Email not verified for tiara31@gmail.com","timestamp":"2025-05-23T13:57:37.751Z"}
+{"level":"info","message":"User logged in successfully: tiara31@gmail.com","timestamp":"2025-05-23T13:59:45.484Z"}
+{"level":"info","message":"Verification email sent to bagusmuhammadfajar27@gmail.com","timestamp":"2025-05-23T14:00:36.630Z"}
+{"level":"info","message":"Verification email sent to bagusmuhammadfajar27@gmail.com","timestamp":"2025-05-23T14:03:38.029Z"}
+{"level":"info","message":"Resent verification email to bagusmuhammadfajar27@gmail.com","timestamp":"2025-05-23T14:04:30.011Z"}
+{"level":"info","message":"Email verified successfully for user: bagusmuhammadfajar27@gmail.com","timestamp":"2025-05-23T14:04:53.163Z"}
+{"level":"warn","message":"Invalid or expired verification token attempt: 8de9da36d0da8c8ad53cb1f49800499f8ccf5271","timestamp":"2025-05-23T14:04:53.210Z"}
+{"level":"warn","message":"Invalid or expired verification token attempt: 8de9da36d0da8c8ad53cb1f49800499f8ccf5271","timestamp":"2025-05-23T14:04:58.289Z"}
+{"level":"warn","message":"Invalid or expired verification token attempt: 8de9da36d0da8c8ad53cb1f49800499f8ccf5271","timestamp":"2025-05-23T14:04:58.319Z"}
+{"level":"info","message":"User logged in successfully: bagusmuhammadfajar27@gmail.com","timestamp":"2025-05-23T14:05:34.616Z"}
+{"level":"info","message":"User logged in successfully: bagus@gmail.com","timestamp":"2025-05-23T14:16:07.432Z"}
+{"level":"info","message":"Verification email sent to bagusmuhammadfajar27@gmail.com","timestamp":"2025-05-23T14:16:36.237Z"}
+{"level":"info","message":"Verification email sent to bagusmuhammadfajar27@gmail.com","timestamp":"2025-05-23T14:22:57.025Z"}
+{"level":"info","message":"Verification email sent to bagusmuhammadfajar27@gmail.com","timestamp":"2025-05-23T14:26:45.664Z"}
+{"level":"info","message":"Verification email sent to bagusmuhammadfajar27@gmail.com","timestamp":"2025-05-23T14:29:23.647Z"}
+{"level":"info","message":"Verification email sent to bagusmuhammadfajar27@gmail.com","timestamp":"2025-05-23T14:46:47.835Z"}
+{"level":"info","message":"Verification email sent to bagusmuhammadfajar27@gmail.com","timestamp":"2025-05-23T14:53:09.289Z"}
+{"level":"info","message":"========= VERIFY EMAIL ATTEMPT - Raw Token Received: 738d95c162c23d33312856688e1721b0ff8af8a1 =========","timestamp":"2025-05-23T14:53:25.264Z"}
+{"level":"info","message":"Hashed token for DB query: 21f9f2e700f1f3c3a1baa00715cb23008306703258e594d3085b625185433ad6","timestamp":"2025-05-23T14:53:25.265Z"}
+{"level":"info","message":"User found: bagusmuhammadfajar27@gmail.com, Current isVerified status: false, Token Expires At: Sat May 24 2025 21:52:32 GMT+0700 (Indochina Time)","timestamp":"2025-05-23T14:53:25.329Z"}
+{"level":"info","message":"Token is VALID for user bagusmuhammadfajar27@gmail.com. Proceeding with verification.","timestamp":"2025-05-23T14:53:25.330Z"}
+{"level":"info","message":"Email successfully verified and user record updated for: bagusmuhammadfajar27@gmail.com","timestamp":"2025-05-23T14:53:25.375Z"}
+{"level":"info","message":"========= END VERIFY EMAIL ATTEMPT - Raw Token: 738d95c162c23d33312856688e1721b0ff8af8a1 =========","timestamp":"2025-05-23T14:53:25.381Z"}
+{"level":"info","message":"User logged in successfully: bagusmuhammadfajar27@gmail.com","timestamp":"2025-05-23T14:53:37.216Z"}
+{"level":"info","message":"Verification email sent to bagusmuhammadfajar27@gmail.com","timestamp":"2025-05-23T14:54:02.084Z"}
+{"level":"warn","message":"Login failed: Email not verified for bagusmuhammadfajar27@gmail.com","timestamp":"2025-05-23T14:54:18.964Z"}
+{"level":"info","message":"User logged in successfully: bagus@gmail.com","timestamp":"2025-05-23T15:58:53.207Z"}
+{"level":"info","message":"Verification email sent to bagusmuhammadfajar27@gmail.com","timestamp":"2025-05-23T16:18:24.356Z"}
+{"level":"info","message":"========= VERIFY EMAIL ATTEMPT - Raw Token Received: 07f56c9ac4ae1d9f59def3772367c6e3eb836cfe =========","timestamp":"2025-05-23T16:18:45.736Z"}
+{"level":"info","message":"Hashed token for DB query: 446681c5ab9be87cf65546c99feebe0fe6dfa070683729adc72fbff0f40afdd5","timestamp":"2025-05-23T16:18:45.738Z"}
+{"level":"warn","message":"No user found with hashed token: 446681c5ab9be87cf65546c99feebe0fe6dfa070683729adc72fbff0f40afdd5. This token may be incorrect, already used and cleared, or never existed.","timestamp":"2025-05-23T16:18:45.800Z"}
+{"level":"info","message":"========= END VERIFY EMAIL ATTEMPT - Raw Token: 07f56c9ac4ae1d9f59def3772367c6e3eb836cfe =========","timestamp":"2025-05-23T16:18:45.802Z"}
+{"level":"info","message":"========= VERIFY EMAIL ATTEMPT - Raw Token Received: 11ed96f0e1fc273d1adce0203f17c91fb32ebe3f =========","timestamp":"2025-05-23T16:18:50.451Z"}
+{"level":"info","message":"Hashed token for DB query: 18d6a721fa306c8042ad4f736964c022d161623241bf6729798de454fa23cda5","timestamp":"2025-05-23T16:18:50.452Z"}
+{"level":"info","message":"User found: bagusmuhammadfajar27@gmail.com, Current isVerified status: false, Token Expires At: Sat May 24 2025 23:18:20 GMT+0700 (Indochina Time)","timestamp":"2025-05-23T16:18:50.484Z"}
+{"level":"info","message":"Token is VALID for user bagusmuhammadfajar27@gmail.com. Proceeding with verification.","timestamp":"2025-05-23T16:18:50.484Z"}
+{"level":"info","message":"Email successfully verified and user record updated for: bagusmuhammadfajar27@gmail.com","timestamp":"2025-05-23T16:18:50.521Z"}
+{"level":"info","message":"========= END VERIFY EMAIL ATTEMPT - Raw Token: 11ed96f0e1fc273d1adce0203f17c91fb32ebe3f =========","timestamp":"2025-05-23T16:18:50.522Z"}
+{"level":"info","message":"User logged in successfully: bagusmuhammadfajar27@gmail.com","timestamp":"2025-05-23T16:19:03.724Z"}
+{"level":"info","message":"User logged in successfully: bagus@gmail.com","timestamp":"2025-05-23T16:31:07.686Z"}
+{"level":"info","message":"User logged in successfully: tiara31@gmail.com","timestamp":"2025-05-23T16:54:35.224Z"}

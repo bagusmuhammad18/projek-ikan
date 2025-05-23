@@ -9,7 +9,7 @@ info:
 servers:
   - url: http://localhost:5000/api
     description: Local development server
-  - url: https://iwak.onrender.com/api
+  - url: http://localhost:5000/api
     description: Deployed server on Render
 
 tags:
