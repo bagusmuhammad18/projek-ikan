@@ -1,237 +1,313 @@
-openapi: 3.0.3
+openapi: 3.0.0
 info:
   title: Order API
   description: API untuk mengelola pesanan (checkout, melihat, dan memperbarui status) di marketplace ikan.
   version: 1.0.0
   contact:
-    email: support@example.com
+    name: API Support
+    email: support@iwak.com # Sesuaikan
 
-servers:
-  - url: http://localhost:5000/api
-    description: Local development server
-  - url: http://localhost:5000/api
-    description: Deployed server on Render
+# Tags sudah didefinisikan di swagger.js
 
 paths:
   /orders:
     post:
       tags:
         - Orders
-      summary: Checkout from shopping cart to order
-      description: Melakukan checkout dari keranjang belanja ke pesanan, memeriksa stok, dan mengurangi stok produk.
+      summary: Buat pesanan baru (Checkout)
+      description: |
+        Membuat pesanan baru dari item yang dipilih (bisa dari keranjang atau "Beli Sekarang").
+        Menggunakan `multipart/form-data`. Field objek (`shippingAddress`) dan array (`items`) harus dikirim sebagai **string JSON**.
+        Bukti pembayaran (`proofOfPayment`) bersifat opsional.
+      security:
+        - bearerAuth: []
       requestBody:
         required: true
         content:
-          application/json:
+          multipart/form-data:
             schema:
               type: object
+              required:
+                - shippingAddress # String JSON
+                - paymentMethod
+                - items # String JSON
+                - source # 'cart' atau 'buyNow'
               properties:
                 shippingAddress:
+                  type: string # Stringified JSON
+                  description: |
+                    String JSON dari objek alamat pengiriman.
+                    Contoh: `{"recipientName":"Nama Penerima","phoneNumber":"081234567890","streetAddress":"Jl. Contoh No.1","city":"Jakarta","province":"DKI Jakarta","postalCode":"12345"}`
+                  example: '{"recipientName":"Budi","phoneNumber":"08123","streetAddress":"Jl. Ikan No.1","city":"Jakarta","province":"DKI","postalCode":"12345"}'
+                paymentMethod:
                   type: string
-                  example: "Jl. Ikan Segar No. 123, Jakarta"
-              required:
-                - shippingAddress
+                  description: "Metode pembayaran yang dipilih (misal: 'Transfer Bank', 'COD')."
+                  example: "Transfer Bank BCA"
+                shippingCost:
+                  type: number
+                  format: double
+                  description: "Biaya pengiriman (opsional)."
+                  example: 15000
+                items: # Stringified JSON array of order items
+                  type: string
+                  description: |
+                    String JSON dari array item yang dipesan. Setiap item harus memiliki `product` (ID), `quantity`, `jenis`, `size`, `satuan`.
+                    Contoh: `[{"product":"productId1","quantity":2,"jenis":"Nila Merah","size":"Sedang","satuan":"kg"}, {"product":"productId2","quantity":1,"jenis":"Lele","size":"Besar","satuan":"ekor"}]`
+                  example: '[{"product":"60d5f8c3b1f2a6a8c0e4b2f3","quantity":2,"jenis":"Nila Merah","size":"Sedang","satuan":"kg"}]'
+                proofOfPayment:
+                  type: string
+                  format: binary
+                  description: "File gambar bukti pembayaran (opsional, maks 0.5MB)."
+                source:
+                  type: string
+                  enum: [cart, buyNow]
+                  description: "Sumber dari mana pesanan dibuat ('cart' atau 'buyNow')."
+                  example: "cart"
+            encoding: # Memberikan info encoding per properti jika diperlukan
+              shippingAddress:
+                contentType: application/json
+              items:
+                contentType: application/json
       responses:
         "201":
-          description: Pesanan berhasil dibuat
+          description: Pesanan berhasil dibuat.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Order"
+                $ref: "#/components/schemas/OrderResponse"
         "400":
-          description: Validasi gagal, keranjang kosong, atau stok tidak mencukupi
+          description: Input tidak valid, item tidak lengkap, stok tidak mencukupi, atau format JSON salah.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  errors:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        msg:
-                          type: string
-                          example: "Shipping address is required"
-                  message:
-                    type: string
-                    example: "Cart is empty"
+                oneOf:
+                  - $ref: "#/components/schemas/ErrorResponseValidation"
+                  - $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Tidak terautentikasi.
+        "404":
+          description: Produk tidak ditemukan.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "500":
-          description: Error server
+          description: Kesalahan server internal.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: "Failed to place order"
-                  error:
-                    type: string
-                    example: "Error message"
+                $ref: "#/components/schemas/ErrorResponse"
+
     get:
       tags:
         - Orders
-      summary: Get user orders
-      description: Melihat daftar pesanan pengguna yang sedang login, diurutkan berdasarkan waktu pembuatan (terbaru dulu).
+      summary: Dapatkan daftar pesanan pengguna
+      description: Mengambil daftar semua pesanan milik pengguna yang sedang login, diurutkan berdasarkan tanggal pembuatan (terbaru dulu).
+      security:
+        - bearerAuth: []
       responses:
         "200":
-          description: Daftar pesanan berhasil diambil
+          description: Daftar pesanan berhasil diambil.
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/Order"
+                  $ref: "#/components/schemas/OrderResponse"
+        "401":
+          description: Tidak terautentikasi.
         "500":
-          description: Error server
+          description: Kesalahan server internal.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: "Failed to retrieve orders"
-                  error:
-                    type: string
-                    example: "Error message"
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /orders/all:
+    get:
+      tags:
+        - Admin - Orders # Atau bisa juga 'Orders' jika user biasa juga bisa akses (dengan filter)
+      summary: Dapatkan semua pesanan (Admin) atau pesanan pengguna
+      description: |
+        Admin: Mengambil daftar semua pesanan di sistem.
+        User Biasa: Mengambil daftar semua pesanan milik pengguna tersebut.
+        Diurutkan berdasarkan tanggal pembuatan (terbaru dulu).
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Daftar pesanan berhasil diambil.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/OrderResponse"
+        "401":
+          description: Tidak terautentikasi.
+        "500":
+          description: Kesalahan server internal.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /orders/{id}:
     get:
       tags:
         - Orders
-      summary: Get order details
-      description: Melihat detail pesanan tertentu berdasarkan ID untuk pengguna yang sedang login.
+      summary: Dapatkan detail pesanan berdasarkan ID
+      description: Mengambil informasi detail satu pesanan berdasarkan ID-nya. Hanya bisa diakses oleh pemilik pesanan atau admin.
+      security:
+        - bearerAuth: []
       parameters:
         - name: id
           in: path
           required: true
+          description: ID unik pesanan.
           schema:
             type: string
-            example: "60d5f8c3b1f2a6a8c0e4b2f5"
+            format: objectId
+            example: "615d3b0f2a6a8c0e4b2f5a01"
       responses:
         "200":
-          description: Detail pesanan berhasil diambil
+          description: Detail pesanan berhasil diambil.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Order"
+                $ref: "#/components/schemas/OrderResponse"
+        "400":
+          description: Format ID pesanan tidak valid.
+        "401":
+          description: Tidak terautentikasi.
+        "403":
+          description: Akses ditolak.
         "404":
-          description: Pesanan tidak ditemukan
+          description: Pesanan tidak ditemukan.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: "Order not found"
+                $ref: "#/components/schemas/ErrorResponse" # Pesan: "Pesanan tidak ditemukan"
         "500":
-          description: Error server
+          description: Kesalahan server internal.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: "Failed to retrieve order"
-                  error:
-                    type: string
-                    example: "Error message"
+                $ref: "#/components/schemas/ErrorResponse"
 
   /orders/{id}/status:
     put:
       tags:
-        - Orders
-      summary: Update order status
+        - Admin - Orders
+      summary: Update status pesanan (Admin)
       description: |
-        Memperbarui status pesanan. Status valid:
-        - Pending: Order baru dibuat, belum dibayar
-        - Paid: Sudah dibayar
-        - Processing: Penjual sedang memproses pesanan
-        - Shipped: Pesanan dalam pengiriman
-        - Delivered: Pesanan sudah diterima pembeli
-        - Cancelled: Pesanan dibatalkan
+        (Admin) Memperbarui status pesanan.
+        Status yang valid: Pending, Paid, Processing, Shipped, Delivered, Cancelled.
+        Jika status 'Shipped' dan metode pembayaran 'COD', `codProof` (bukti COD) diperlukan jika belum ada.
+        Menggunakan `multipart/form-data` jika `codProof` diupload.
+      security:
+        - bearerAuth: []
       parameters:
         - name: id
           in: path
           required: true
+          description: ID unik pesanan.
           schema:
             type: string
-            example: "60d5f8c3b1f2a6a8c0e4b2f5"
+            format: objectId
+            example: "615d3b0f2a6a8c0e4b2f5a01"
       requestBody:
         required: true
         content:
-          application/json:
+          multipart/form-data: # Digunakan jika ada upload file (codProof)
             schema:
               type: object
+              required:
+                - status
               properties:
                 status:
                   type: string
                   enum:
                     [Pending, Paid, Processing, Shipped, Delivered, Cancelled]
                   example: "Shipped"
-              required:
-                - status
+                trackingNumber:
+                  type: string
+                  description: "Nomor resi pengiriman (opsional)."
+                  example: "JN0012345678"
+                shippingMethod:
+                  type: string
+                  description: "Metode pengiriman yang digunakan (opsional, diisi jika bukan COD atau ingin override)."
+                  example: "JNE REG"
+                codProof:
+                  type: string
+                  format: binary
+                  description: "File gambar bukti COD (opsional, diperlukan jika status Shipped & metode COD, maks 0.5MB)."
       responses:
         "200":
-          description: Status pesanan berhasil diperbarui
+          description: Status pesanan berhasil diperbarui.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Order"
+                $ref: "#/components/schemas/OrderResponse"
         "400":
-          description: Status tidak valid
+          description: Input tidak valid, status tidak valid, atau operasi tidak diizinkan (misal, mengubah status dari Cancelled).
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: "Invalid status"
+                oneOf:
+                  - $ref: "#/components/schemas/ErrorResponseValidation"
+                  - $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Tidak terautentikasi.
+        "403":
+          description: Akses ditolak (bukan admin).
         "404":
-          description: Pesanan tidak ditemukan
+          description: Pesanan tidak ditemukan.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: "Order not found"
+                $ref: "#/components/schemas/ErrorResponse"
         "500":
-          description: Error server
+          description: Kesalahan server internal.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: "Failed to update order status"
-                  error:
-                    type: string
-                    example: "Error message"
+                $ref: "#/components/schemas/ErrorResponse"
 
   /orders/{id}/pay:
     put:
       tags:
-        - Orders
-      summary: Simulate order payment
-      description: Simulasi pembayaran pesanan, mengubah status dari 'Pending' ke 'Paid' (hanya untuk testing).
+        - Orders # Bisa juga Admin - Orders jika admin bisa mensimulasikan pembayaran
+      summary: Simulasi pembayaran pesanan
+      description: |
+        Mensimulasikan proses pembayaran untuk pesanan yang statusnya 'Pending', mengubah statusnya menjadi 'Paid'.
+        Dapat diakses oleh pemilik pesanan atau admin.
+        Opsional dapat menyertakan `proofOfPaymentUrl` di body jika pembayaran manual.
+      security:
+        - bearerAuth: []
       parameters:
         - name: id
           in: path
           required: true
+          description: ID unik pesanan.
           schema:
             type: string
-            example: "60d5f8c3b1f2a6a8c0e4b2f5"
+            format: objectId
+            example: "615d3b0f2a6a8c0e4b2f5a01"
+      requestBody: # Opsional, jika ingin mengirim URL bukti bayar
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                proofOfPaymentUrl:
+                  type: string
+                  format: url
+                  description: "URL bukti pembayaran jika ada (misal, setelah upload manual oleh user)."
+                  example: "https://ucarecdn.com/proof-uuid/"
       responses:
         "200":
-          description: Pembayaran berhasil disimulasikan
+          description: Pembayaran berhasil disimulasikan.
           content:
             application/json:
               schema:
@@ -241,83 +317,257 @@ paths:
                     type: string
                     example: "Pembayaran berhasil (simulasi)"
                   order:
-                    $ref: "#/components/schemas/Order"
+                    $ref: "#/components/schemas/OrderResponse"
         "400":
-          description: Pesanan tidak bisa diproses
+          description: Pesanan tidak dalam status 'Pending' atau format ID salah.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: "Order sudah dibayar atau tidak bisa diproses"
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Tidak terautentikasi.
+        "403":
+          description: Akses ditolak.
         "404":
-          description: Pesanan tidak ditemukan
+          description: Pesanan tidak ditemukan.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: "Order not found"
+                $ref: "#/components/schemas/ErrorResponse"
         "500":
-          description: Error server
+          description: Kesalahan server internal.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: "Failed to simulate payment"
-                  error:
-                    type: string
-                    example: "Error message"
+                $ref: "#/components/schemas/ErrorResponse"
 
 components:
   schemas:
-    Order:
+    OrderItem:
       type: object
+      required:
+        - product # ID Produk
+        - quantity
+        - price # Harga asli per unit saat order
+        - discountedPrice # Harga setelah diskon per unit saat order
+        - jenis
+        - size
+        - satuan
+      properties:
+        product: # Saat request bisa ID, saat response bisa objek produk yang di-populate
+          oneOf:
+            - type: string # ID produk
+              format: objectId
+              example: "60d5f8c3b1f2a6a8c0e4b2f3"
+            - type: object # Objek produk yang di-populate (untuk response)
+              properties:
+                _id:
+                  type: string
+                  format: objectId
+                name:
+                  type: string
+                images:
+                  type: array
+                  items:
+                    type: string
+                    format: url
+        quantity:
+          type: integer
+          minimum: 1
+          example: 2
+        price:
+          type: number
+          format: double
+          description: "Harga asli produk per unit pada saat checkout."
+          example: 65000
+        discount:
+          type: number
+          format: double
+          description: "Persentase diskon produk per unit pada saat checkout (0-100)."
+          nullable: true
+          example: 5
+        discountedPrice:
+          type: number
+          format: double
+          description: "Harga produk per unit setelah diskon pada saat checkout."
+          example: 61750
+        jenis:
+          type: string
+          description: "Jenis spesifik produk yang dipesan."
+          example: "Nila Merah"
+        size:
+          type: string
+          description: "Ukuran produk yang dipesan."
+          example: "Sedang"
+        satuan:
+          type: string
+          enum: [kg, ekor]
+          description: "Satuan produk yang dipesan."
+          example: "kg"
+
+    ShippingAddressOrder:
+      type: object
+      required:
+        - recipientName
+        - phoneNumber
+        - streetAddress
+        - city
+        - province
+        - postalCode
+      properties:
+        recipientName:
+          type: string
+          example: "Budi Santoso"
+        phoneNumber:
+          type: string
+          example: "081234567890"
+        streetAddress:
+          type: string
+          example: "Jl. Ikan Mas No. 1A, RT 01 RW 02, Kel. Bahagia"
+        city:
+          type: string
+          example: "Jakarta Selatan"
+        province:
+          type: string
+          example: "DKI Jakarta"
+        postalCode:
+          type: string
+          example: "12345"
+        notes: # Opsional
+          type: string
+          nullable: true
+          example: "Rumah pagar hijau"
+
+    OrderBase:
+      type: object
+      required:
+        - items
+        - totalAmount
+        - shippingAddress
+        - paymentMethod
+        - orderSource # Tambahkan ini jika selalu ada
+        # - status # Biasanya default di server
       properties:
         _id:
           type: string
-          example: "60d5f8c3b1f2a6a8c0e4b2f5"
-        user:
-          type: string
-          example: "60d5f8c3b1f2a6a8c0e4b2f3"
+          format: objectId
+          readOnly: true
+          example: "615d3b0f2a6a8c0e4b2f5a01"
         items:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderItem"
+        totalAmount:
+          type: number
+          format: double
+          description: "Total harga semua item ditambah biaya pengiriman."
+          example: 138500 # (2 * 61750) + 15000
+        shippingAddress:
+          $ref: "#/components/schemas/ShippingAddressOrder"
+        shippingCost:
+          type: number
+          format: double
+          default: 0
+          example: 15000
+        paymentMethod:
+          type: string
+          example: "Transfer Bank BCA"
+        proofOfPayment:
+          type: string
+          format: url
+          nullable: true
+          description: "URL bukti pembayaran."
+          example: "https://ucarecdn.com/proof-uuid/"
+        status:
+          type: string
+          enum: [Pending, Paid, Processing, Shipped, Delivered, Cancelled]
+          default: "Pending"
+          example: "Pending"
+        trackingNumber:
+          type: string
+          nullable: true
+          description: "Nomor resi pengiriman."
+          example: "JN0012345678"
+        shippingMethod: # Berbeda dari paymentMethod, ini metode kurir
+          type: string
+          nullable: true
+          description: "Metode kurir pengiriman (misal: JNE, SiCepat, COD)."
+          example: "JNE REG"
+        codProof:
+          type: string
+          format: url
+          nullable: true
+          description: "URL bukti COD (jika pembayaran COD dan sudah dikirim/diterima)."
+          example: "https://ucarecdn.com/cod-proof-uuid/"
+        orderSource:
+          type: string
+          enum: [cart, buyNow]
+          description: "Sumber pesanan."
+          example: "cart"
+        orderDate: # Ini adalah alias untuk createdAt, untuk kemudahan di frontend
+          type: string
+          format: date-time
+          readOnly: true
+          description: "Tanggal dan waktu pesanan dibuat."
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+        updatedAt:
+          type: string
+          format: date-time
+          readOnly: true
+
+    OrderResponse:
+      allOf:
+        - $ref: "#/components/schemas/OrderBase"
+      properties:
+        user: # Informasi pengguna
+          type: object
+          readOnly: true
+          properties:
+            _id:
+              type: string
+              format: objectId
+            name:
+              type: string
+            phoneNumber:
+              type: string
+
+    # Error schemas (bisa ditaruh di swagger.js jika dipakai global)
+    ErrorResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: "Pesan error spesifik"
+        error:
+          type: string
+          example: "Detail error jika ada"
+        success:
+          type: boolean
+          example: false
+
+    ErrorResponseValidation:
+      type: object
+      properties:
+        errors:
           type: array
           items:
             type: object
             properties:
-              product:
+              type:
                 type: string
-                example: "60d5f8c3b1f2a6a8c0e4b2f3"
-              quantity:
-                type: integer
-                minimum: 1
-                example: 2
-              price:
-                type: number
-                example: 50
-        totalAmount:
-          type: number
-          example: 100
-        shippingAddress:
-          type: string
-          example: "Jl. Ikan Segar No. 123, Jakarta"
-        status:
-          type: string
-          enum: [Pending, Paid, Processing, Shipped, Delivered, Cancelled]
-          example: "Pending"
-        createdAt:
-          type: string
-          format: date-time
-          example: "2023-01-01T12:00:00Z"
-      required:
-        - user
-        - items
-        - totalAmount
-        - shippingAddress
+                example: "field"
+              value:
+                type: string
+                example: ""
+              msg:
+                type: string
+                example: "Nama penerima wajib diisi"
+              path:
+                type: string
+                example: "shippingAddress.recipientName"
+              location:
+                type: string
+                example: "body"

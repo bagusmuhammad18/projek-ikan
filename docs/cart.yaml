@@ -1,186 +1,210 @@
-openapi: 3.0.3
+openapi: 3.0.0
 info:
   title: Cart API
   description: API untuk mengelola keranjang belanja (menambah, memperbarui, dan menghapus item) di marketplace ikan.
   version: 1.0.0
   contact:
-    email: support@example.com
+    name: API Support
+    email: support@iwak.com # Sesuaikan
 
-servers:
-  - url: http://localhost:5000/api
-    description: Local development server
-  - url: http://localhost:5000/api
-    description: Deployed server on Render
+# Tags sudah didefinisikan di swagger.js
 
 paths:
   /cart:
     get:
       tags:
         - Cart
-      summary: Get user shopping cart
-      description: Mengambil keranjang belanja untuk pengguna yang sedang login.
+      summary: Dapatkan keranjang belanja pengguna
+      description: Mengambil keranjang belanja untuk pengguna yang sedang login. Jika tidak ada, kembalikan objek dengan items array kosong.
+      security:
+        - bearerAuth: []
       responses:
         "200":
-          description: Keranjang belanja berhasil diambil
+          description: Keranjang belanja berhasil diambil.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Cart"
+                $ref: "#/components/schemas/CartResponse"
+        "401":
+          description: Tidak terautentikasi.
         "500":
-          description: Error server
+          description: Kesalahan server internal.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: "Failed to get cart"
-                  error:
-                    type: string
-                    example: "Error message"
+                $ref: "#/components/schemas/ErrorResponse"
+
     post:
       tags:
         - Cart
-      summary: Add item to cart
-      description: Menambahkan item ke keranjang belanja pengguna yang sedang login.
+      summary: Tambah item ke keranjang
+      description: Menambahkan item produk (dengan varian jenis dan size tertentu) ke keranjang belanja pengguna. Jika item sudah ada, kuantitasnya akan ditambahkan.
+      security:
+        - bearerAuth: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                productId:
-                  type: string
-                  example: "60d5f8c3b1f2a6a8c0e4b2f3"
-                quantity:
-                  type: integer
-                  minimum: 1
-                  example: 2
-              required:
-                - productId
-                - quantity
+              $ref: "#/components/schemas/CartItemPayload"
       responses:
-        "200":
-          description: Item berhasil ditambahkan ke keranjang
+        "200": # Atau 201 jika item baru dibuat, 200 jika diupdate
+          description: Item berhasil ditambahkan atau diperbarui di keranjang.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Cart"
+                $ref: "#/components/schemas/CartResponse"
         "400":
-          description: Validasi gagal atau stok tidak mencukupi
+          description: Input tidak valid, stok tidak mencukupi, atau varian produk tidak ditemukan.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  errors:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        msg:
-                          type: string
-                          example: "Product ID is required"
-                  message:
-                    type: string
-                    example: "Quantity exceeds available stock"
+                oneOf:
+                  - $ref: "#/components/schemas/ErrorResponseValidation"
+                  - $ref: "#/components/schemas/ErrorResponse" # Untuk pesan custom
+        "401":
+          description: Tidak terautentikasi.
         "404":
-          description: Produk tidak ditemukan
+          description: Produk tidak ditemukan atau ID produk tidak valid.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: "Product not found"
+                $ref: "#/components/schemas/ErrorResponse"
         "500":
-          description: Error server
+          description: Kesalahan server internal.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: "Failed to add item to cart"
+                $ref: "#/components/schemas/ErrorResponse"
+
     put:
       tags:
         - Cart
-      summary: Update item quantity in cart
-      description: Memperbarui jumlah item tertentu di keranjang pengguna yang sedang login.
+      summary: Update kuantitas item di keranjang
+      description: Memperbarui kuantitas item produk (dengan varian jenis dan size tertentu) di keranjang belanja pengguna.
+      security:
+        - bearerAuth: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                productId:
-                  type: string
-                  example: "60d5f8c3b1f2a6a8c0e4b2f3"
-                quantity:
-                  type: integer
-                  minimum: 1
-                  example: 3
-              required:
-                - productId
-                - quantity
+              $ref: "#/components/schemas/CartItemPayload" # Bisa pakai skema yang sama dengan POST
       responses:
         "200":
-          description: Jumlah item berhasil diperbarui
+          description: Kuantitas item berhasil diperbarui.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Cart"
+                $ref: "#/components/schemas/CartResponse"
         "400":
-          description: Validasi gagal atau stok tidak mencukupi
+          description: Input tidak valid, stok tidak mencukupi, atau varian produk tidak ditemukan.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  errors:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        msg:
-                          type: string
-                          example: "Product ID is required"
-                  message:
-                    type: string
-                    example: "Quantity exceeds available stock"
+                oneOf:
+                  - $ref: "#/components/schemas/ErrorResponseValidation"
+                  - $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Tidak terautentikasi.
         "404":
-          description: Keranjang atau produk tidak ditemukan
+          description: Keranjang, item, atau produk tidak ditemukan.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: "Cart not found"
+                $ref: "#/components/schemas/ErrorResponse"
         "500":
-          description: Error server
+          description: Kesalahan server internal.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: "Failed to update cart"
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # Endpoint DELETE /api/cart/{productId} membutuhkan `jenis` dan `size` di body.
+  # OpenAPI path parameter biasanya tidak bisa digabung dengan body untuk DELETE standar.
+  # Pilihan:
+  # 1. Ubah menjadi DELETE /api/cart dengan productId, jenis, size di body. (LEBIH UMUM)
+  # 2. Pertahankan DELETE /api/cart/{productId} tapi kirim jenis & size sebagai query params.
+  # Saya akan memilih opsi 1 untuk konsistensi dengan PUT dan POST jika banyak parameter.
+  # Jika tetap mau dengan /:productId, maka jenis dan size harus di query.
+  # Untuk saat ini, saya sesuaikan dengan implementasi Anda (DELETE /:productId dengan body).
+
+  /cart/{productId}:
     delete:
       tags:
         - Cart
-      summary: Clear cart
-      description: Menghapus semua item dari keranjang pengguna yang sedang login.
+      summary: Hapus item spesifik dari keranjang
+      description: Menghapus item produk tertentu (berdasarkan productId, jenis, dan size) dari keranjang belanja pengguna.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          description: ID produk yang akan dihapus dari keranjang.
+          schema:
+            type: string
+            format: objectId
+            example: "60d5f8c3b1f2a6a8c0e4b2f3"
+      requestBody: # Diperlukan untuk mengirim `jenis` dan `size`
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - jenis
+                - size
+              properties:
+                jenis:
+                  type: string
+                  description: "Jenis item produk yang akan dihapus."
+                  example: "Nila Merah"
+                size:
+                  type: string
+                  description: "Ukuran item produk yang akan dihapus."
+                  example: "Sedang"
       responses:
         "200":
-          description: Keranjang berhasil dikosongkan
+          description: Item berhasil dihapus dari keranjang.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CartResponse"
+        "400":
+          description: Input `jenis` atau `size` tidak valid.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ErrorResponseValidation"
+                  - $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Tidak terautentikasi.
+        "404":
+          description: Keranjang tidak ditemukan.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Kesalahan server internal.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /cart/clear:
+    delete:
+      tags:
+        - Cart
+      summary: Kosongkan keranjang belanja
+      description: Menghapus semua item dari keranjang belanja pengguna yang sedang login.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Keranjang berhasil dikosongkan.
           content:
             application/json:
               schema:
@@ -189,85 +213,156 @@ paths:
                   message:
                     type: string
                     example: "Cart cleared"
-        "500":
-          description: Error server
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: "Failed to clear cart"
-
-  /cart/{productId}:
-    delete:
-      tags:
-        - Cart
-      summary: Remove item from cart
-      description: Menghapus item tertentu dari keranjang berdasarkan productId.
-      parameters:
-        - name: productId
-          in: path
-          required: true
-          schema:
-            type: string
-            example: "60d5f8c3b1f2a6a8c0e4b2f3"
-      responses:
-        "200":
-          description: Item berhasil dihapus dari keranjang
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Cart"
+        "401":
+          description: Tidak terautentikasi.
         "404":
-          description: Keranjang tidak ditemukan
+          description: Keranjang tidak ditemukan (jika perlu dihapus dulu baru dicek).
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: "Cart not found"
+                $ref: "#/components/schemas/ErrorResponse"
         "500":
-          description: Error server
+          description: Kesalahan server internal.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: "Failed to remove item from cart"
+                $ref: "#/components/schemas/ErrorResponse"
 
 components:
   schemas:
-    Cart:
+    CartItemPayload: # Untuk request body POST dan PUT /cart
+      type: object
+      required:
+        - productId
+        - quantity
+        - jenis
+        - size
+      properties:
+        productId:
+          type: string
+          format: objectId
+          description: "ID Produk yang akan ditambahkan/diperbarui."
+          example: "60d5f8c3b1f2a6a8c0e4b2f3"
+        quantity:
+          type: integer
+          minimum: 1
+          description: "Jumlah item."
+          example: 2
+        jenis:
+          type: string
+          description: "Jenis spesifik dari produk."
+          example: "Nila Merah"
+        size:
+          type: string
+          description: "Ukuran spesifik dari produk."
+          example: "Sedang"
+
+    CartItemDetail: # Untuk item dalam response Cart
+      type: object
+      properties:
+        product: # Saat response, ini adalah objek produk yang di-populate
+          type: object
+          # Sebaiknya referensi ke skema produk yang sudah ada, misal ProductBase dari product.yaml
+          # Jika ingin lebih simpel di sini:
+          properties:
+            _id:
+              type: string
+              format: objectId
+            name:
+              type: string
+            images:
+              type: array
+              items:
+                type: string
+                format: url
+            # Tambahkan field produk lain yang relevan ditampilkan di keranjang (misal harga asli, diskon dari stock entry)
+            stocks: # Untuk menampilkan harga, diskon, satuan yang sesuai dengan jenis & size di keranjang
+              type: array
+              items:
+                $ref: "./product.yaml#/components/schemas/ProductStockItem" # Referensi ke ProductStockItem
+                # atau definisikan versi simpelnya di sini jika ProductStockItem terlalu kompleks
+        quantity:
+          type: integer
+          minimum: 1
+          example: 2
+        jenis:
+          type: string
+          example: "Nila Merah"
+        size:
+          type: string
+          example: "Sedang"
+        # Anda mungkin ingin menambahkan harga per item dan subtotal di sini setelah kalkulasi
+        # pricePerItem:
+        #   type: number
+        #   example: 50000
+        # subtotal:
+        #   type: number
+        #   example: 100000
+
+    CartResponse:
       type: object
       properties:
         _id:
           type: string
-          example: "60d5f8c3b1f2a6a8c0e4b2f4"
+          format: objectId
+          readOnly: true
+          example: "615e8a4b2f5a01d3b0f2a6a8"
         user:
-          type: string
+          type: string # ID Pengguna
+          format: objectId
+          readOnly: true
           example: "60d5f8c3b1f2a6a8c0e4b2f3"
         items:
           type: array
           items:
-            type: object
-            properties:
-              product:
-                type: string
-                example: "60d5f8c3b1f2a6a8c0e4b2f3"
-              quantity:
-                type: integer
-                minimum: 1
-                example: 2
+            $ref: "#/components/schemas/CartItemDetail"
+        # Anda mungkin ingin menambahkan total harga keranjang di sini
+        # cartTotal:
+        #   type: number
+        #   example: 250000
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
         updatedAt:
           type: string
           format: date-time
-          example: "2023-01-01T12:00:00Z"
-      required:
-        - user
-        - items
+          readOnly: true
+
+    # Error schemas (bisa ditaruh di swagger.js jika dipakai global)
+    ErrorResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: "Pesan error spesifik"
+        error:
+          type: string
+          example: "Detail error jika ada"
+        success:
+          type: boolean
+          example: false
+
+    ErrorResponseValidation:
+      type: object
+      properties:
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+                example: "field"
+              value:
+                type: string
+                example: ""
+              msg:
+                type: string
+                example: "Product ID is required"
+              path:
+                type: string
+                example: "productId"
+              location:
+                type: string
+                example: "body"

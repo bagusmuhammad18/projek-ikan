@@ -1,83 +1,28 @@
-openapi: 3.0.3
+openapi: 3.0.0
 info:
   title: User API
-  description: API untuk mengelola pengguna (registrasi, login, reset password, dan profil).
+  description: API untuk mengelola pengguna (registrasi, login, reset password, profil, dan manajemen alamat). Termasuk endpoint khusus admin.
   version: 1.0.0
-  contact:
-    email: support@example.com
-
-servers:
-  - url: http://localhost:5000/api
-    description: Local development server
-  - url: http://localhost:5000/api
-    description: Deployed server on Render
-
-tags:
-  - name: Users
-    description: API untuk mengelola data pengguna, termasuk registrasi, login, reset password, dan profil.
+  contact: # SESUAIKAN INI
+    name: API Support
+    email: support@iwak.com
 
 paths:
   /users/register:
     post:
       tags:
         - Users
-      summary: Register a new user
-      description: Membuat akun pengguna baru dengan validasi input dan rate limiting.
+      summary: Registrasi pengguna baru
+      description: Mendaftarkan pengguna baru dengan validasi input dan mengirim email verifikasi. Rate limiting diterapkan.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                name:
-                  type: string
-                  example: "John Doe"
-                phoneNumber:
-                  type: string
-                  example: "081234567890"
-                email:
-                  type: string
-                  format: email
-                  example: "bagus@gmail.com"
-                password:
-                  type: string
-                  example: "password"
-              required:
-                - name
-                - phoneNumber
-                - email
-                - password
+              $ref: "#/components/schemas/RegisterRequest"
       responses:
         "201":
-          description: User berhasil didaftarkan
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  user:
-                    $ref: "#/components/schemas/User"
-                  token:
-                    type: string
-                    example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-        "400":
-          description: Validasi gagal atau email/nomor telepon sudah terdaftar
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  errors:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        msg:
-                          type: string
-                          example: "Nama wajib diisi"
-        "500":
-          description: Error server
+          description: Registrasi berhasil, email verifikasi dikirim.
           content:
             application/json:
               schema:
@@ -85,61 +30,102 @@ paths:
                 properties:
                   message:
                     type: string
-                    example: "Registrasi gagal"
+                    example: "Registrasi berhasil. Silakan periksa email Anda untuk verifikasi akun."
+        "200":
+          description: Email sudah terdaftar tapi belum diverifikasi, email verifikasi dikirim ulang.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Email sudah terdaftar namun belum diverifikasi. Kami telah mengirim ulang email verifikasi. Silakan periksa email Anda."
+        "400":
+          description: Input tidak valid, atau email/nomor telepon sudah terdaftar dan terverifikasi.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseValidation"
+        "500":
+          description: Kesalahan server internal.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      security: []
+
+  /users/verify-email/{token}:
+    get:
+      tags:
+        - Users
+      summary: Verifikasi alamat email pengguna
+      description: Memverifikasi email pengguna menggunakan token yang dikirim. Akan me-redirect ke CLIENT_URL dengan status.
+      parameters:
+        - name: token
+          in: path
+          required: true
+          description: Token verifikasi yang dikirim ke email pengguna.
+          schema:
+            type: string
+      responses:
+        "302":
+          description: |
+            Redirect ke frontend dengan parameter status:
+            - `/login?verified_status=success&message=...` (sukses)
+            - `/login?verified_status=already&message=...` (sudah terverifikasi)
+            - `/auth-message?status=invalid_link&message=...`
+            - `/auth-message?status=invalid_token&message=...`
+            - `/auth-message?status=expired_token&email=...&message=...`
+            - `/auth-message?status=error&message=...`
+        "500":
+          description: Konfigurasi server error.
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "Konfigurasi server error: URL Klien tidak diatur."
+      security: []
 
   /users/login:
     post:
       tags:
         - Users
-      summary: Login user
-      description: Melakukan login pengguna untuk mendapatkan token JWT dengan rate limiting.
+      summary: Login pengguna
+      description: Mengautentikasi pengguna dan mengembalikan token JWT jika berhasil. Rate limiting diterapkan.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                email:
-                  type: string
-                  format: email
-                  example: "bagus@gmail.com"
-                password:
-                  type: string
-                  example: "password"
-              required:
-                - email
-                - password
+              $ref: "#/components/schemas/LoginRequest"
       responses:
         "200":
-          description: Login berhasil
+          description: Login berhasil.
           content:
             application/json:
               schema:
                 type: object
                 properties:
                   user:
-                    $ref: "#/components/schemas/User"
+                    $ref: "#/components/schemas/UserResponse"
                   token:
                     type: string
                     example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
         "400":
-          description: Validasi gagal
+          description: Input tidak valid.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  errors:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        msg:
-                          type: string
-                          example: "Email tidak valid"
+                $ref: "#/components/schemas/ErrorResponseValidation"
         "401":
-          description: Email atau password salah
+          description: Email atau password salah.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Akun belum diverifikasi.
           content:
             application/json:
               schema:
@@ -147,40 +133,40 @@ paths:
                 properties:
                   message:
                     type: string
-                    example: "Email atau password salah"
+                    example: "Akun Anda belum diverifikasi. Silakan periksa email Anda untuk link verifikasi."
+                  action:
+                    type: string
+                    example: "resend_verification_required"
         "500":
-          description: Error server
+          description: Kesalahan server internal.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: "Login gagal"
+                $ref: "#/components/schemas/ErrorResponse"
+      security: []
 
-  /users/forgot-password:
+  /users/resend-verification-email:
     post:
       tags:
         - Users
-      summary: Request reset password
-      description: Mengirim email untuk reset password dengan rate limiting.
+      summary: Kirim ulang email verifikasi
+      description: Mengirim ulang email verifikasi ke pengguna yang belum terverifikasi. Rate limiting diterapkan.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
+              required:
+                - email
               properties:
                 email:
                   type: string
                   format: email
-                  example: "bagus@gmail.com"
-              required:
-                - email
+                  example: "user@example.com"
       responses:
         "200":
-          description: Email reset berhasil dikirim
+          description: Permintaan berhasil diproses.
           content:
             application/json:
               schema:
@@ -188,34 +174,45 @@ paths:
                 properties:
                   message:
                     type: string
-                    example: "Email reset telah dikirim"
+                    example: "Jika email terdaftar dan belum diverifikasi, email verifikasi akan dikirim."
         "400":
-          description: Validasi gagal
+          description: Email sudah diverifikasi atau input tidak valid.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  errors:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        msg:
-                          type: string
-                          example: "Email tidak valid"
-        "404":
-          description: User tidak ditemukan
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: "User tidak ditemukan"
+                oneOf:
+                  - $ref: "#/components/schemas/ErrorResponseValidation"
+                  - $ref: "#/components/schemas/ErrorResponse"
         "500":
-          description: Error server
+          description: Kesalahan server internal.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      security: []
+
+  /users/forgot-password:
+    post:
+      tags:
+        - Users
+      summary: Lupa password
+      description: Mengirim email berisi link untuk mereset password. Rate limiting diterapkan.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: "user@example.com"
+      responses:
+        "200":
+          description: Permintaan berhasil diproses.
           content:
             application/json:
               schema:
@@ -223,36 +220,49 @@ paths:
                 properties:
                   message:
                     type: string
-                    example: "Gagal mengirim email"
+                    example: "Jika email terdaftar dan terverifikasi, instruksi reset password akan dikirim. Periksa email dan spam anda."
+        "400":
+          description: Input tidak valid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseValidation"
+        "403":
+          description: Akun belum diverifikasi.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Kesalahan server internal.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      security: []
 
   /users/reset-password/{token}:
     post:
       tags:
         - Users
       summary: Reset password
-      description: Mengatur ulang password menggunakan token.
+      description: Mengatur ulang password pengguna menggunakan token reset.
       parameters:
         - name: token
           in: path
           required: true
+          description: Token reset password yang dikirim ke email pengguna.
           schema:
             type: string
-            example: "abc123..."
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                password:
-                  type: string
-                  example: "newpassword123"
-              required:
-                - password
+              $ref: "#/components/schemas/PasswordResetRequest"
       responses:
         "200":
-          description: Password berhasil direset
+          description: Password berhasil direset.
           content:
             application/json:
               schema:
@@ -260,108 +270,125 @@ paths:
                 properties:
                   message:
                     type: string
-                    example: "Password berhasil direset"
+                    example: "Password berhasil direset. Silakan login dengan password baru Anda."
         "400":
-          description: Validasi gagal atau token invalid/expired
+          description: Input tidak valid atau token tidak valid/kedaluwarsa.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: "Token invalid atau expired"
+                oneOf:
+                  - $ref: "#/components/schemas/ErrorResponseValidation"
+                  - $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Akun belum diverifikasi.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "500":
-          description: Error server
+          description: Kesalahan server internal.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: "Gagal reset password"
+                $ref: "#/components/schemas/ErrorResponse"
+      security: []
 
   /users/profile:
     get:
       tags:
         - Users
-      summary: Get user profile
-      description: Mendapatkan profil pengguna yang sedang login.
-      security:
-        - bearerAuth: []
+      summary: Dapatkan profil pengguna
+      description: Mengambil detail profil pengguna yang sedang login.
+      # security: - bearerAuth: [] (otomatis dari global)
       responses:
         "200":
-          description: Profil pengguna
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/User"
-        "500":
-          description: Error server
+          description: Profil pengguna berhasil diambil.
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  message:
-                    type: string
-                    example: "Gagal update profil"
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: "#/components/schemas/UserProfileResponse"
+        "401":
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: User tidak ditemukan.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Kesalahan server internal.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     put:
       tags:
         - Users
-      summary: Update user profile
-      description: Memperbarui profil pengguna yang sedang login.
-      security:
-        - bearerAuth: []
+      summary: Update profil pengguna (diri sendiri)
+      description: Memperbarui detail profil pengguna yang sedang login. Email, role, dan status verifikasi tidak dapat diubah melalui endpoint ini.
+      # security: - bearerAuth: [] (otomatis dari global)
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                name:
-                  type: string
-                  example: "John Doe"
-                phoneNumber:
-                  type: string
-                  example: "081234567890"
-                email:
-                  type: string
-                  format: email
-                  example: "bagus@gmail.com"
-                password:
-                  type: string
-                  example: "newpassword123"
-              required: false
+              $ref: "#/components/schemas/UpdateProfileRequest"
       responses:
         "200":
-          description: Profil berhasil diperbarui
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/User"
-        "500":
-          description: Error server
+          description: Profil berhasil diperbarui.
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  message:
-                    type: string
-                    example: "Gagal update profil"
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: "#/components/schemas/UserResponse"
+        "400":
+          description: Input tidak valid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: User tidak ditemukan.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Kesalahan server internal.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     delete:
       tags:
         - Users
-      summary: Delete user account
-      description: Menghapus akun pengguna yang sedang login.
-      security:
-        - bearerAuth: []
+      summary: Hapus akun pengguna (diri sendiri)
+      description: Menghapus akun pengguna yang sedang login secara permanen.
+      # security: - bearerAuth: [] (otomatis dari global)
       responses:
         "200":
-          description: Akun berhasil dihapus
+          description: Akun berhasil dihapus.
           content:
             application/json:
               schema:
@@ -370,20 +397,711 @@ paths:
                   message:
                     type: string
                     example: "Akun berhasil dihapus"
+        "401":
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "500":
-          description: Error server
+          description: Kesalahan server internal.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /users/profile/avatar:
+    post:
+      tags:
+        - Users
+      summary: Upload avatar pengguna
+      description: Mengupload atau mengganti avatar pengguna yang sedang login.
+      # security: - bearerAuth: [] (otomatis dari global)
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                avatar:
+                  type: string
+                  format: binary
+                  description: File gambar avatar (jpeg, png, gif, webp, bmp), maks 5MB sebelum kompresi.
+              required:
+                - avatar
+      responses:
+        "200":
+          description: Avatar berhasil diupload.
           content:
             application/json:
               schema:
                 type: object
                 properties:
+                  success:
+                    type: boolean
+                    example: true
+                  avatar:
+                    type: string
+                    format: url
+                    example: "https://ucarecdn.com/file-id/"
+        "400":
+          description: Tidak ada file diupload, format file salah, atau ukuran file terlalu besar.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: User tidak ditemukan.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Kesalahan server internal (gagal upload/kompresi).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /users/profile/{id}:
+    put:
+      tags:
+        - Admin - Users
+      summary: Update profil pengguna (oleh Admin)
+      description: (Admin) Memperbarui detail profil pengguna berdasarkan ID. Email, role, dan status verifikasi tidak dapat diubah melalui endpoint ini.
+      # security: - bearerAuth: [] (otomatis dari global)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID pengguna yang akan diperbarui.
+          schema:
+            type: string
+            example: "60d5f8c3b1f2a6a8c0e4b2f3"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProfileRequest"
+      responses:
+        "200":
+          description: Profil berhasil diperbarui oleh admin.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: "#/components/schemas/UserResponse"
+        "400":
+          description: ID tidak valid atau input tidak valid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Akses ditolak (bukan admin).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: User tidak ditemukan.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Kesalahan server internal.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /users/address:
+    post:
+      tags:
+        - Users
+      summary: Tambah alamat baru
+      description: Menambahkan alamat baru untuk pengguna yang sedang login.
+      # security: - bearerAuth: [] (otomatis dari global)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddressPayload"
+      responses:
+        "201":
+          description: Alamat berhasil ditambahkan.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
                   message:
                     type: string
-                    example: "Gagal menghapus akun"
+                    example: "Alamat berhasil ditambahkan."
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Address"
+        "400":
+          description: Input tidak valid (field wajib tidak diisi).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: User tidak ditemukan.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Kesalahan server internal.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /users/address/{addressId}:
+    put:
+      tags:
+        - Users
+      summary: Update alamat pengguna
+      description: Memperbarui alamat tertentu milik pengguna yang sedang login.
+      # security: - bearerAuth: [] (otomatis dari global)
+      parameters:
+        - name: addressId
+          in: path
+          required: true
+          description: ID alamat yang akan diperbarui.
+          schema:
+            type: string
+            example: "60d5f8c3b1f2a6a8c0e4b2a1"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddressPayload"
+      responses:
+        "200":
+          description: Alamat berhasil diperbarui.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Alamat berhasil diperbarui."
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Address"
+        "400":
+          description: Input tidak valid atau mencoba menjadikan alamat non-primary jika hanya satu alamat.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: User atau alamat tidak ditemukan.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Kesalahan server internal.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      tags:
+        - Users
+      summary: Hapus alamat pengguna
+      description: Menghapus alamat tertentu milik pengguna yang sedang login.
+      # security: - bearerAuth: [] (otomatis dari global)
+      parameters:
+        - name: addressId
+          in: path
+          required: true
+          description: ID alamat yang akan dihapus.
+          schema:
+            type: string
+            example: "60d5f8c3b1f2a6a8c0e4b2a1"
+      responses:
+        "200":
+          description: Alamat berhasil dihapus.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Alamat berhasil dihapus"
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Address"
+        "401":
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: User atau alamat tidak ditemukan.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Kesalahan server internal.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /users/customers:
+    get:
+      tags:
+        - Admin - Users
+      summary: Dapatkan semua customer (Admin)
+      description: (Admin) Mengambil daftar semua pengguna dengan role 'customer', mendukung paginasi dan sorting.
+      # security: - bearerAuth: [] (otomatis dari global)
+      parameters:
+        - name: page
+          in: query
+          description: Nomor halaman.
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          description: Jumlah item per halaman.
+          schema:
+            type: integer
+            default: 10
+        - name: sortBy
+          in: query
+          description: Field untuk sorting (name, email, createdAt).
+          schema:
+            type: string
+            enum: [name, email, createdAt]
+            default: createdAt
+        - name: sortOrder
+          in: query
+          description: Urutan sorting (asc, desc).
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: asc
+      responses:
+        "200":
+          description: Daftar customer berhasil diambil.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  total:
+                    type: integer
+                    example: 100
+                  page:
+                    type: integer
+                    example: 1
+                  limit:
+                    type: integer
+                    example: 10
+                  totalPages:
+                    type: integer
+                    example: 10
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CustomerListItem"
+        "401":
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Akses ditolak (bukan admin).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Kesalahan server internal.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /users/customers/{id}:
+    delete:
+      tags:
+        - Admin - Users
+      summary: Hapus customer berdasarkan ID (Admin)
+      description: (Admin) Menghapus pengguna dengan role 'customer' berdasarkan ID.
+      # security: - bearerAuth: [] (otomatis dari global)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID customer yang akan dihapus.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Customer berhasil dihapus.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Pengguna John Doe berhasil dihapus"
+        "400":
+          description: Hanya customer yang bisa dihapus atau ID tidak valid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Akses ditolak (bukan admin).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Customer tidak ditemukan.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Kesalahan server internal.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /users/customers/{id}/summary:
+    get:
+      tags:
+        - Admin - Users
+      summary: Dapatkan ringkasan detail customer (Admin)
+      description: (Admin) Mengambil detail customer beserta ringkasan order.
+      # security: - bearerAuth: [] (otomatis dari global)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID customer.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Detail customer berhasil diambil.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: "#/components/schemas/CustomerDetailSummary"
+        "400":
+          description: ID customer tidak valid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Akses ditolak (bukan admin).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Customer tidak ditemukan.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Kesalahan server internal.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /users/customers/{id}/orders:
+    get:
+      tags:
+        - Admin - Users
+      summary: Dapatkan riwayat transaksi customer (Admin)
+      description: (Admin) Mengambil semua order yang terkait dengan customer tertentu.
+      # security: - bearerAuth: [] (otomatis dari global)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID customer.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Riwayat transaksi berhasil diambil.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/OrderSummaryForAdmin"
+        "400":
+          description: ID customer tidak valid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Akses ditolak (bukan admin).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Customer tidak ditemukan.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Kesalahan server internal.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
 components:
   schemas:
-    User:
+    RegisterRequest:
+      type: object
+      required:
+        - name
+        - phoneNumber
+        - email
+        - password
+      properties:
+        name:
+          type: string
+          example: "Bagus Setiawan"
+        phoneNumber:
+          type: string
+          example: "081234567890"
+        email:
+          type: string
+          format: email
+          example: "bagus@example.com"
+        password:
+          type: string
+          format: password
+          minLength: 8
+          description: "Min 8 karakter, 1 huruf kapital, 1 huruf kecil, 1 angka, 1 simbol, tanpa spasi."
+          example: "P@sswOrd123!"
+
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          example: "bagus@example.com"
+        password:
+          type: string
+          format: password
+          example: "P@sswOrd123!"
+
+    PasswordResetRequest:
+      type: object
+      required:
+        - password
+      properties:
+        password:
+          type: string
+          format: password
+          minLength: 8
+          description: "Password baru. Min 8 karakter, 1 huruf kapital, 1 huruf kecil, 1 angka, 1 simbol, tanpa spasi."
+          example: "NewP@sswOrd123!"
+
+    UpdateProfileRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          example: "Bagus Setiawan Update"
+        phoneNumber:
+          type: string
+          example: "089876543210"
+        gender:
+          type: string
+          enum: [Laki-laki, Perempuan, Lainnya]
+          example: "Laki-laki"
+        password:
+          type: string
+          format: password
+          minLength: 8
+          example: "BrandNewP@sswOrd!"
+        addresses:
+          type: array
+          items:
+            $ref: "#/components/schemas/AddressPayload"
+          description: "Biasanya alamat dikelola via /address endpoints."
+
+    Address:
+      type: object
+      properties:
+        _id:
+          type: string
+          example: "60d5f8c3b1f2a6a8c0e4b2a1"
+        recipientName:
+          type: string
+          example: "Penerima Utama"
+        phoneNumber:
+          type: string
+          example: "081234567891"
+        streetAddress:
+          type: string
+          example: "Jl. Ikan Segar No. 1"
+        postalCode:
+          type: string
+          example: "12345"
+        province:
+          type: string
+          example: "Jawa Tengah"
+        city:
+          type: string
+          example: "Semarang"
+        isPrimary:
+          type: boolean
+          example: true
+
+    AddressPayload:
+      type: object
+      required:
+        - recipientName
+        - phoneNumber
+        - streetAddress
+        - postalCode
+        - province
+        - city
+      properties:
+        recipientName:
+          type: string
+          example: "Penerima Baru"
+        phoneNumber:
+          type: string
+          example: "087777777777"
+        streetAddress:
+          type: string
+          example: "Jl. Ikan Lele No. 10"
+        postalCode:
+          type: string
+          example: "54321"
+        province:
+          type: string
+          example: "Jawa Barat"
+        city:
+          type: string
+          example: "Bandung"
+        isPrimary:
+          type: boolean
+          default: false
+          example: false
+
+    UserBase:
       type: object
       properties:
         _id:
@@ -391,27 +1109,212 @@ components:
           example: "60d5f8c3b1f2a6a8c0e4b2f3"
         name:
           type: string
-          example: "John Doe"
-        phoneNumber:
-          type: string
-          example: "081234567890"
+          example: "Bagus Setiawan"
         email:
           type: string
           format: email
-          example: "bagus@gmail.com"
+          example: "bagus@example.com"
+        phoneNumber:
+          type: string
+          example: "081234567890"
         role:
           type: string
-          enum: [user, admin]
-          example: "user"
+          enum: [customer, admin] # SESUAIKAN INI DENGAN MODEL USER ANDA
+          example: "customer"
+        avatar:
+          type: string
+          format: url
+          nullable: true
+          example: "https://ucarecdn.com/some-uuid/"
+        isVerified:
+          type: boolean
+          example: true
+
+    UserResponse:
+      allOf:
+        - $ref: "#/components/schemas/UserBase"
+
+    UserProfileResponse:
+      allOf:
+        - $ref: "#/components/schemas/UserBase"
+      properties:
+        gender:
+          type: string
+          enum: [Laki-laki, Perempuan, Lainnya, null]
+          nullable: true
+          example: "Laki-laki"
+        addresses:
+          type: array
+          items:
+            $ref: "#/components/schemas/Address"
         createdAt:
           type: string
           format: date-time
-          example: "2023-01-01T00:00:00Z"
         updatedAt:
           type: string
           format: date-time
-          example: "2023-01-02T00:00:00Z"
-      required:
-        - name
-        - phoneNumber
-        - email
+
+    CustomerListItem:
+      type: object
+      properties:
+        _id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        phoneNumber:
+          type: string
+        avatar:
+          type: string
+          format: url
+          nullable: true
+        registrationDate:
+          type: string
+          format: date-time
+        isVerified:
+          type: boolean
+
+    CustomerDetailSummary:
+      type: object
+      properties:
+        _id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        phoneNumber:
+          type: string
+        gender:
+          type: string
+          enum: [Laki-laki, Perempuan, Lainnya, null]
+          nullable: true
+        avatar:
+          type: string
+          format: url
+          nullable: true
+        isVerified:
+          type: boolean
+        registrationDate:
+          type: string
+          format: date-time
+        address:
+          $ref: "#/components/schemas/Address"
+          nullable: true
+        orderSummary:
+          type: object
+          properties:
+            totalOrders:
+              type: integer
+              example: 5
+            completed:
+              type: integer
+              example: 3
+            processing:
+              type: integer
+              example: 1
+            canceled:
+              type: integer
+              example: 1
+
+    OrderSummaryForAdmin: # WAJIB SESUAIKAN SKEMA INI DENGAN MODEL ORDER ANDA
+      type: object
+      description: "Struktur data Order yang dikembalikan untuk admin. Sesuaikan fieldnya."
+      properties:
+        _id:
+          type: string
+        user:
+          type: object
+          properties:
+            _id:
+              type: string
+            name:
+              type: string
+            avatar:
+              type: string
+              format: url
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              product:
+                type: object
+                properties:
+                  _id:
+                    type: string
+                  name:
+                    type: string
+                  images:
+                    type: array
+                    items:
+                      type: string
+                      format: url
+                  price:
+                    type: number
+              quantity:
+                type: integer
+              price:
+                type: number
+        totalAmount:
+          type: number
+        status:
+          type: string
+          enum: [
+              Pending,
+              Paid,
+              Processing,
+              Shipped,
+              Delivered,
+              Cancelled,
+              Refunded,
+            ] # SESUAIKAN INI
+        createdAt:
+          type: string
+          format: date-time
+
+    ErrorResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: "Pesan error spesifik"
+        error:
+          type: string
+          example: "Detail error jika ada"
+        success:
+          type: boolean
+          example: false
+
+    ErrorResponseValidation:
+      type: object
+      properties:
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+                example: "field"
+              value:
+                type: string
+                example: ""
+              msg:
+                type: string
+                example: "Password minimal 8 karakter"
+              path:
+                type: string
+                example: "password"
+              location:
+                type: string
+                example: "body"
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

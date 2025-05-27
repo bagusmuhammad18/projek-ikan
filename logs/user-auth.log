@@ -44,3 +44,6 @@
 {"level":"info","message":"User logged in successfully: bagusmuhammadfajar27@gmail.com","timestamp":"2025-05-23T16:19:03.724Z"}
 {"level":"info","message":"User logged in successfully: bagus@gmail.com","timestamp":"2025-05-23T16:31:07.686Z"}
 {"level":"info","message":"User logged in successfully: tiara31@gmail.com","timestamp":"2025-05-23T16:54:35.224Z"}
+{"email":"bagusmuhammadfajar27@gmail.com","level":"info","message":"Permintaan reset password diterima","timestamp":"2025-05-27T14:27:18.539Z"}
+{"email":"bagusmuhammadfajar27@gmail.com","level":"info","message":"Token reset password dibuat","resetToken":"7f3d18b4ad25779a3f9650e4189356e1494199ad","timestamp":"2025-05-27T14:27:18.640Z","user":"Bagus Muhammad"}
+{"email":"bagusmuhammadfajar27@gmail.com","level":"info","message":"Email reset password berhasil dikirim","resetUrl":"http://localhost:5173/reset-password/7f3d18b4ad25779a3f9650e4189356e1494199ad","timestamp":"2025-05-27T14:27:21.450Z"}

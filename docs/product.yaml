@@ -1,98 +1,72 @@
-openapi: 3.0.3
+openapi: 3.0.0
 info:
   title: Product API
   description: API untuk mengelola produk (mencari, membuat, memperbarui, dan menghapus) di marketplace ikan.
   version: 1.0.0
   contact:
-    email: support@example.com
+    name: API Support
+    email: support@iwak.com # Sesuaikan
 
-servers:
-  - url: http://localhost:5000/api
-    description: Local development server
-  - url: http://localhost:5000/api
-    description: Deployed server on Render
+# Tags sudah didefinisikan di swagger.js, jadi tidak perlu di sini.
 
 paths:
-  /products/:
+  /products: # Path dasar untuk produk (GET list, POST create)
     get:
       tags:
         - Products
-      summary: Get all products with filters, sorting, and pagination
-      description: Mengambil daftar produk yang dipublikasikan dengan opsi filter, pengurutan, dan paginasi.
+      summary: Dapatkan semua produk yang dipublikasikan
+      description: Mengambil daftar produk yang telah dipublikasikan dengan opsi filter, pengurutan, dan paginasi.
       parameters:
-        - name: search
-          in: query
-          description: Pencarian berdasarkan nama produk (case-insensitive)
-          required: false
-          schema:
-            type: string
-            example: "ikan"
-        - name: minPrice
-          in: query
-          description: Harga minimum
-          required: false
-          schema:
-            type: number
-            example: 10
-        - name: maxPrice
-          in: query
-          description: Harga maksimum
-          required: false
-          schema:
-            type: number
-            example: 100
-        - name: color
-          in: query
-          description: Filter berdasarkan warna (case-insensitive, single atau multiple)
-          required: false
-          schema:
-            type: array
-            items:
-              type: string
-            example: ["merah", "biru"]
-        - name: size
-          in: query
-          description: Filter berdasarkan ukuran (case-insensitive, single atau multiple)
-          required: false
-          schema:
-            type: array
-            items:
-              type: string
-            example: ["M", "L"]
-        - name: sortBy
-          in: query
-          description: Field untuk pengurutan (misalnya price, createdAt)
-          required: false
-          schema:
-            type: string
-            example: "price"
-        - name: sortOrder
-          in: query
-          description: Arah pengurutan (asc atau desc)
-          required: false
-          schema:
-            type: string
-            enum: [asc, desc]
-            example: "asc"
         - name: page
           in: query
-          description: Nomor halaman
-          required: false
+          description: Nomor halaman.
           schema:
             type: integer
             default: 1
             example: 1
         - name: limit
           in: query
-          description: Jumlah item per halaman
-          required: false
+          description: Jumlah item per halaman.
           schema:
             type: integer
             default: 10
             example: 10
+        - name: sortBy
+          in: query
+          description: Field untuk pengurutan (misalnya, createdAt, name, atau field dalam stocks.price jika didukung query).
+          schema:
+            type: string
+            default: createdAt
+            example: "createdAt"
+        - name: sortOrder
+          in: query
+          description: Arah pengurutan.
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+            example: "desc"
+        - name: search
+          in: query
+          description: Kata kunci pencarian untuk nama, deskripsi, atau jenis produk.
+          schema:
+            type: string
+            example: "Nila"
+        - name: jenis
+          in: query
+          description: Filter berdasarkan jenis ikan (satu jenis).
+          schema:
+            type: string
+            example: "Nila Merah"
+        - name: size
+          in: query
+          description: Filter berdasarkan ukuran ikan (satu ukuran).
+          schema:
+            type: string
+            example: "Sedang"
       responses:
         "200":
-          description: Daftar produk berhasil diambil
+          description: Daftar produk berhasil diambil.
           content:
             application/json:
               schema:
@@ -101,346 +75,290 @@ paths:
                   products:
                     type: array
                     items:
-                      $ref: "#/components/schemas/Product"
+                      $ref: "#/components/schemas/ProductResponse"
                   pagination:
-                    type: object
-                    properties:
-                      currentPage:
-                        type: integer
-                        example: 1
-                      totalPages:
-                        type: integer
-                        example: 5
-                      totalItems:
-                        type: integer
-                        example: 50
-                      itemsPerPage:
-                        type: integer
-                        example: 10
+                    $ref: "#/components/schemas/Pagination"
         "500":
-          description: Error server
+          description: Kesalahan server internal.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: "Server error"
-                  error:
-                    type: string
-                    example: "Error message"
+                $ref: "#/components/schemas/ErrorResponse"
+      security: [] # Endpoint publik
+
     post:
       tags:
-        - Products
-      summary: Create a new product
-      description: Membuat produk baru (hanya untuk admin).
+        - Admin - Products
+      summary: Buat produk baru (Admin)
+      description: |
+        Membuat produk baru. Hanya untuk pengguna dengan role admin.
+        Karena menggunakan `multipart/form-data`, field objek/array seperti `dimensions`, `type`, dan `stocks` harus dikirim sebagai **string JSON**.
+        Maksimal 5 gambar dapat diupload.
       security:
         - bearerAuth: []
       requestBody:
         required: true
         content:
-          application/json:
+          multipart/form-data:
             schema:
               type: object
-              properties:
-                sku:
-                  type: string
-                  example: "IKN001"
-                name:
-                  type: string
-                  example: "Ikan Nila"
-                description:
-                  type: string
-                  example: "Ikan segar berkualitas tinggi"
-                price:
-                  type: number
-                  example: 50
-                stock:
-                  type: number
-                  example: 100
-                discount:
-                  type: number
-                  example: 10
-                weight:
-                  type: number
-                  example: 1.5
-                dimensions:
-                  type: object
-                  properties:
-                    height:
-                      type: number
-                      example: 10
-                    length:
-                      type: number
-                      example: 20
-                    width:
-                      type: number
-                      example: 5
-                type:
-                  type: object
-                  properties:
-                    color:
-                      type: array
-                      items:
-                        type: string
-                      example: ["merah", "hijau"]
-                    size:
-                      type: array
-                      items:
-                        type: string
-                      example: ["M", "L"]
-                isPublished:
-                  type: boolean
-                  example: true
-              required:
-                - sku
+              required: # Sesuaikan field wajib berdasarkan validateProduct dan model
                 - name
                 - description
-                - price
-                - stock
+                # - stocks # Mungkin wajib jika produk harus punya varian
+              properties:
+                name:
+                  type: string
+                  example: "Ikan Gurame Segar"
+                description:
+                  type: string
+                  example: "Gurame segar langsung dari kolam, kualitas terjamin."
+                images:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+                  description: "Maksimal 5 file gambar produk."
+                weight:
+                  type: number
+                  format: float
+                  description: "Berat rata-rata produk dalam Kg (opsional)."
+                  example: 0.8
+                dimensions:
+                  type: string # Stringified JSON
+                  description: 'String JSON dari objek dimensi: `{ "height": 10, "length": 30 }` (opsional).'
+                  example: '{ "height": 10, "length": 30 }'
+                type:
+                  type: string # Stringified JSON
+                  description: 'String JSON dari objek tipe: `{ "jenis": ["Gurame Padang", "Gurame Soang"], "size": ["Kecil", "Sedang", "Besar"] }` (opsional).'
+                  example: '{ "jenis": ["Gurame Padang"], "size": ["Sedang"] }'
+                stocks: # WAJIB SESUAIKAN, mungkin perlu `required: true`
+                  type: string # Stringified JSON
+                  description: |
+                    String JSON dari array objek stok. Setiap objek harus memiliki `jenis`, `size`, `stock`, `price`, `satuan`. `discount` opsional.
+                    Contoh: `[{\"jenis\":\"Gurame Padang\",\"size\":\"Sedang\",\"stock\":50,\"price\":65000,\"satuan\":\"kg\",\"discount\":5}, {\"jenis\":\"Gurame Padang\",\"size\":\"Besar\",\"stock\":30,\"price\":75000,\"satuan\":\"kg\"}]`
+                  example: '[{"jenis":"Gurame Padang","size":"Sedang","stock":50,"price":65000,"satuan":"kg","discount":5}]'
+                isPublished:
+                  type: boolean
+                  description: "Status publikasi produk (opsional, default true)."
+                  example: true
+            encoding: # Memberikan info encoding per properti jika diperlukan, terutama untuk JSON string
+              dimensions:
+                contentType: application/json
+              type:
+                contentType: application/json
+              stocks:
+                contentType: application/json
       responses:
         "201":
-          description: Produk berhasil dibuat
+          description: Produk berhasil dibuat.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Product"
+                $ref: "#/components/schemas/ProductResponse"
         "400":
-          description: Validasi gagal
+          description: Input tidak valid (error validasi atau format JSON salah).
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  errors:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        msg:
-                          type: string
-                          example: "SKU is required"
+                oneOf: # Bisa error validasi atau error parsing JSON
+                  - $ref: "#/components/schemas/ErrorResponseValidation"
+                  - $ref: "#/components/schemas/ErrorResponse" # Untuk pesan error umum
+        "401":
+          description: Tidak terautentikasi.
+        "403":
+          description: Akses ditolak (bukan admin).
         "500":
-          description: Error server
+          description: Kesalahan server internal.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: "Failed to create product"
+                $ref: "#/components/schemas/ErrorResponse"
 
   /products/all:
     get:
       tags:
-        - Products
-      summary: Get all products (without publishing filter)
-      description: Mengambil semua produk tanpa memfilter berdasarkan isPublished.
+        - Products # Atau Admin - Products jika ini untuk internal admin
+      summary: Dapatkan semua produk (tanpa filter publikasi)
+      description: Mengambil daftar semua produk, termasuk yang belum dipublikasikan. Berguna untuk admin atau keperluan internal.
+      # security: [] # Bisa jadi perlu auth admin jika ini sensitif
       responses:
         "200":
-          description: Daftar semua produk berhasil diambil
+          description: Daftar semua produk berhasil diambil.
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/Product"
+                  $ref: "#/components/schemas/ProductResponse"
         "500":
-          description: Error server
+          description: Kesalahan server internal.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: "Server error"
+                $ref: "#/components/schemas/ErrorResponse"
+      security: [] # Jika endpoint ini perlu proteksi admin, tambahkan security bearerAuth
 
   /products/{id}:
     get:
       tags:
         - Products
-      summary: Get a product by ID
-      description: Mengambil detail produk berdasarkan ID.
+      summary: Dapatkan detail produk berdasarkan ID
+      description: Mengambil informasi detail satu produk berdasarkan ID-nya.
       parameters:
         - name: id
           in: path
           required: true
+          description: ID unik produk.
           schema:
             type: string
+            format: objectId # Indikasi ini adalah MongoDB ObjectId
             example: "60d5f8c3b1f2a6a8c0e4b2f3"
       responses:
         "200":
-          description: Detail produk berhasil diambil
+          description: Detail produk berhasil diambil.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Product"
+                $ref: "#/components/schemas/ProductResponse"
         "404":
-          description: Produk tidak ditemukan
+          description: Produk tidak ditemukan.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: "Product not found"
+                $ref: "#/components/schemas/ErrorResponse" # Pesan: "Product not found"
         "500":
-          description: Error server
+          description: Kesalahan server internal.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: "Server error"
-                  error:
-                    type: string
-                    example: "Error message"
+                $ref: "#/components/schemas/ErrorResponse"
+      security: [] # Endpoint publik
+
     put:
       tags:
-        - Products
-      summary: Update a product
-      description: Memperbarui produk berdasarkan ID (hanya untuk admin).
+        - Admin - Products
+      summary: Update produk (Admin)
+      description: |
+        Memperbarui produk yang sudah ada berdasarkan ID. Hanya untuk pengguna dengan role admin.
+        Field objek/array (`dimensions`, `type`, `stocks`, `existingImages`, `removedImages`) harus dikirim sebagai **string JSON**.
+        Maksimal 5 gambar baru dapat diupload.
       security:
         - bearerAuth: []
       parameters:
         - name: id
           in: path
           required: true
+          description: ID unik produk yang akan diperbarui.
           schema:
             type: string
+            format: objectId
             example: "60d5f8c3b1f2a6a8c0e4b2f3"
       requestBody:
         required: true
         content:
-          application/json:
+          multipart/form-data:
             schema:
               type: object
               properties:
-                sku:
-                  type: string
-                  example: "IKN001"
                 name:
                   type: string
-                  example: "Ikan Nila"
+                  example: "Ikan Gurame Super"
                 description:
                   type: string
-                  example: "Ikan segar berkualitas tinggi"
-                price:
-                  type: number
-                  example: 50
-                stock:
-                  type: number
-                  example: 100
-                discount:
-                  type: number
-                  example: 10
+                  example: "Gurame super segar, ukuran lebih besar."
+                images: # Untuk gambar baru
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+                  description: "File gambar baru yang akan ditambahkan (maks 5)."
+                existingImages: # Stringified JSON array of URLs
+                  type: string
+                  description: 'String JSON dari array URL gambar yang ingin dipertahankan. Contoh: `["https://...url1", "https://...url2"]`'
+                  example: '["https://ucarecdn.com/old-image-1/", "https://ucarecdn.com/old-image-2/"]'
+                removedImages: # Stringified JSON array of URLs
+                  type: string
+                  description: 'String JSON dari array URL gambar yang ingin dihapus. Contoh: `["https://...urlToDelete"]`'
+                  example: '["https://ucarecdn.com/image-to-delete/"]'
                 weight:
                   type: number
-                  example: 1.5
+                  format: float
+                  example: 1.2
                 dimensions:
-                  type: object
-                  properties:
-                    height:
-                      type: number
-                      example: 10
-                    length:
-                      type: number
-                      example: 20
-                    width:
-                      type: number
-                      example: 5
+                  type: string # Stringified JSON
+                  example: '{ "height": 12, "length": 35 }'
                 type:
-                  type: object
-                  properties:
-                    color:
-                      type: array
-                      items:
-                        type: string
-                      example: ["merah", "hijau"]
-                    size:
-                      type: array
-                      items:
-                        type: string
-                      example: ["M", "L"]
+                  type: string # Stringified JSON
+                  example: '{ "jenis": ["Gurame Super"], "size": ["Besar"] }'
+                stocks:
+                  type: string # Stringified JSON
+                  example: '[{"_id":"stockId1","jenis":"Gurame Super","size":"Besar","stock":20,"price":85000,"satuan":"kg"}]'
                 isPublished:
                   type: boolean
-                  example: true
-                existingImages:
-                  type: array
-                  items:
-                    type: string
-                  example: ["https://ucarecdn.com/abc123/..."]
-                removedImages:
-                  type: array
-                  items:
-                    type: string
-                  example: ["https://ucarecdn.com/xyz789/..."]
-              required: false
+                  example: false
+            encoding:
+              dimensions:
+                contentType: application/json
+              type:
+                contentType: application/json
+              stocks:
+                contentType: application/json
+              existingImages:
+                contentType: application/json
+              removedImages:
+                contentType: application/json
       responses:
         "200":
-          description: Produk berhasil diperbarui
+          description: Produk berhasil diperbarui.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Product"
-        "404":
-          description: Produk tidak ditemukan
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: "Product not found"
+                $ref: "#/components/schemas/ProductResponse"
         "400":
-          description: Validasi gagal
+          description: Input tidak valid (error validasi, format JSON salah, atau CastError).
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  errors:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        msg:
-                          type: string
-                          example: "SKU is required"
+                oneOf:
+                  - $ref: "#/components/schemas/ErrorResponseValidation"
+                  - $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Tidak terautentikasi.
+        "403":
+          description: Akses ditolak (bukan admin).
+        "404":
+          description: Produk tidak ditemukan.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "500":
-          description: Error server
+          description: Kesalahan server internal.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: "Failed to update product"
+                $ref: "#/components/schemas/ErrorResponse"
+
     delete:
       tags:
-        - Products
-      summary: Delete a product
-      description: Menghapus produk berdasarkan ID (hanya untuk admin).
+        - Admin - Products
+      summary: Hapus produk (Admin)
+      description: Menghapus produk berdasarkan ID. Hanya untuk pengguna dengan role admin.
       security:
         - bearerAuth: []
       parameters:
         - name: id
           in: path
           required: true
+          description: ID unik produk yang akan dihapus.
           schema:
             type: string
+            format: objectId
             example: "60d5f8c3b1f2a6a8c0e4b2f3"
       responses:
         "200":
-          description: Produk berhasil dihapus
+          description: Produk berhasil dihapus.
           content:
             application/json:
               schema:
@@ -449,106 +367,233 @@ paths:
                   message:
                     type: string
                     example: "Product deleted"
+        "401":
+          description: Tidak terautentikasi.
+        "403":
+          description: Akses ditolak (bukan admin).
         "404":
-          description: Produk tidak ditemukan
+          description: Produk tidak ditemukan.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: "Product not found"
+                $ref: "#/components/schemas/ErrorResponse"
         "500":
-          description: Error server
+          description: Kesalahan server internal.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: "Failed to delete product"
+                $ref: "#/components/schemas/ErrorResponse"
 
 components:
   schemas:
-    Product:
+    ProductStockItem:
       type: object
+      required:
+        - jenis
+        - size
+        - stock
+        - price
+        - satuan
+      properties:
+        _id: # Opsional, ada saat update stock item yang sudah ada
+          type: string
+          format: objectId
+          readOnly: true # Biasanya tidak dikirim client saat create baru
+          example: "615c12f7a737e8a5c1a8c0b2"
+        jenis:
+          type: string
+          description: "Jenis spesifik dari varian produk ini (misal: Nila Merah, Nila Hitam)."
+          example: "Nila Merah"
+        size:
+          type: string
+          description: "Ukuran dari varian produk ini (misal: Kecil, Sedang, Besar)."
+          example: "Sedang"
+        stock:
+          type: integer
+          format: int32
+          description: "Jumlah stok tersedia untuk varian ini."
+          minimum: 0
+          example: 100
+        price:
+          type: number
+          format: double # atau float
+          description: "Harga normal untuk varian ini."
+          minimum: 0
+          example: 50000
+        discount:
+          type: number
+          format: double
+          description: "Persentase diskon (0-100, opsional)."
+          minimum: 0
+          maximum: 100
+          nullable: true
+          example: 10
+        satuan:
+          type: string
+          description: "Satuan jual (kg atau ekor)."
+          enum: [kg, ekor]
+          example: "kg"
+
+    ProductType:
+      type: object
+      properties:
+        jenis:
+          type: array
+          items:
+            type: string
+          description: "Daftar semua jenis ikan yang tersedia untuk produk ini (misal: Gurame, Nila)."
+          example: ["Gurame Padang", "Gurame Soang"]
+        size:
+          type: array
+          items:
+            type: string
+          description: "Daftar semua ukuran yang tersedia untuk produk ini (misal: Kecil, Sedang)."
+          example: ["Kecil", "Sedang", "Besar"]
+
+    ProductDimensions:
+      type: object
+      properties:
+        height:
+          type: number
+          format: float
+          description: "Tinggi produk dalam cm (opsional)."
+          nullable: true
+          example: 10
+        length:
+          type: number
+          format: float
+          description: "Panjang produk dalam cm (opsional)."
+          nullable: true
+          example: 30
+
+    ProductBase:
+      type: object
+      required:
+        - name
+        - description
+        # - stocks # Tergantung apakah produk wajib punya varian stok
       properties:
         _id:
           type: string
+          format: objectId
+          readOnly: true
           example: "60d5f8c3b1f2a6a8c0e4b2f3"
-        sku:
-          type: string
-          example: "IKN001"
         name:
           type: string
-          example: "Ikan Nila"
+          example: "Ikan Gurame"
         description:
           type: string
-          example: "Ikan segar berkualitas tinggi"
-        price:
-          type: number
-          example: 50
-        seller:
-          type: string
-          example: "60d5f8c3b1f2a6a8c0e4b2f1"
-        stock:
-          type: number
-          example: 100
+          example: "Ikan gurame segar dari peternakan pilihan."
         images:
           type: array
           items:
             type: string
-          example: ["https://ucarecdn.com/abc123/..."]
-        discount:
-          type: number
-          example: 10
+            format: url
+          example:
+            ["https://ucarecdn.com/uuid1/", "https://ucarecdn.com/uuid2/"]
         weight:
           type: number
-          example: 1.5
+          format: float
+          description: "Berat rata-rata produk dalam Kg (opsional)."
+          nullable: true
+          example: 0.8
         dimensions:
-          type: object
-          properties:
-            height:
-              type: number
-              example: 10
-            length:
-              type: number
-              example: 20
-            width:
-              type: number
-              example: 5
+          $ref: "#/components/schemas/ProductDimensions"
         type:
-          type: object
-          properties:
-            color:
-              type: array
-              items:
-                type: string
-              example: ["merah", "hijau"]
-            size:
-              type: array
-              items:
-                type: string
-              example: ["M", "L"]
+          $ref: "#/components/schemas/ProductType"
+        stocks:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProductStockItem"
         isPublished:
           type: boolean
+          default: true
           example: true
+        sales:
+          type: integer
+          format: int32
+          description: "Jumlah produk terjual (dikelola sistem)."
+          readOnly: true
+          default: 0
+          example: 150
         createdAt:
           type: string
           format: date-time
-          example: "2023-01-01T00:00:00Z"
-      required:
-        - sku
-        - name
-        - description
-        - price
-        - seller
-        - stock
+          readOnly: true
+        updatedAt:
+          type: string
+          format: date-time
+          readOnly: true
 
-  securitySchemes:
-    bearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
+    ProductResponse: # Skema produk yang dikembalikan ke client
+      allOf:
+        - $ref: "#/components/schemas/ProductBase"
+      properties:
+        seller: # Informasi penjual
+          type: object
+          readOnly: true
+          properties:
+            _id:
+              type: string
+              format: objectId
+            name:
+              type: string
+              example: "Admin Penjual Ikan"
+            storeName: # Jika ada field storeName di model User
+              type: string
+              nullable: true
+              example: "Toko Ikan Segar Jaya"
+
+    Pagination:
+      type: object
+      properties:
+        currentPage:
+          type: integer
+          example: 1
+        totalPages:
+          type: integer
+          example: 5
+        totalItems:
+          type: integer
+          example: 48
+        # itemsPerPage: # Sesuai dengan 'limit' di request, bisa dihilangkan jika 'limit' sudah jelas
+        #   type: integer
+        #   example: 10
+
+    # --- Generic Error Schemas (Bisa dipindah ke swagger.js jika dipakai global) ---
+    ErrorResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: "Pesan error spesifik"
+        error: # Opsional, untuk detail error teknis
+          type: string
+          example: "Detail error jika ada"
+        success: # Jika API Anda konsisten menggunakan 'success: false' untuk error
+          type: boolean
+          example: false
+
+    ErrorResponseValidation:
+      type: object
+      properties:
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+                example: "field"
+              value:
+                type: string # Atau tipe data field yang error
+                example: "" # Nilai yang menyebabkan error
+              msg:
+                type: string
+                example: "Name is required"
+              path:
+                type: string
+                example: "name"
+              location:
+                type: string
+                example: "body"
