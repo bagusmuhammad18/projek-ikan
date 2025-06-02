@@ -10,6 +10,8 @@ const userRoutes = require("./routes/userRoutes");
 const cartRoutes = require("./routes/cartRoutes");
 const orderRoutes = require("./routes/orderRoutes");
 
+const statsRoutes = require("./routes/statsRoutes");
+
 // Import Swagger setup
 const swaggerDocs = require("./docs/swagger");
 
@@ -48,7 +50,7 @@ app.use((req, res, next) => {
 app.use(bodyParser.json());
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-// Panggil Swagger docs
+// Panggil Swagger docs (biasanya diletakkan sebelum rute API)
 swaggerDocs(app);
 
 // Routes
@@ -56,6 +58,9 @@ app.use("/api/products", productRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/cart", cartRoutes);
 app.use("/api/orders", orderRoutes);
+
+// <<==== GUNAKAN RUTE STATISTIK ====>>
+app.use("/api/stats", statsRoutes); // Endpoint akan menjadi /api/stats/visitors
 
 // Fungsi untuk koneksi MongoDB
 const connectDB = async () => {
