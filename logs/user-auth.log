@@ -49,3 +49,35 @@
 {"email":"bagusmuhammadfajar27@gmail.com","level":"info","message":"Email reset password berhasil dikirim","resetUrl":"http://localhost:5173/reset-password/7f3d18b4ad25779a3f9650e4189356e1494199ad","timestamp":"2025-05-27T14:27:21.450Z"}
 {"level":"info","message":"User logged in successfully: tiara31@gmail.com","timestamp":"2025-06-02T14:08:54.518Z"}
 {"level":"info","message":"User logged in successfully: tiara31@gmail.com","timestamp":"2025-06-02T14:10:20.194Z"}
+{"level":"info","message":"User logged in successfully: bagusmuhammadfajar27@gmail.com","timestamp":"2025-06-02T15:02:57.432Z"}
+{"level":"info","message":"Password changed successfully for user: bagusmuhammadfajar27@gmail.com","timestamp":"2025-06-02T15:03:16.160Z"}
+{"level":"warn","message":"Login failed: Incorrect password for email bagusmuhammadfajar27@gmail.com","timestamp":"2025-06-02T15:03:31.409Z"}
+{"level":"info","message":"User logged in successfully: bagusmuhammadfajar27@gmail.com","timestamp":"2025-06-02T15:03:35.539Z"}
+{"level":"info","message":"User logged in successfully: bagusmuhammadfajar27@gmail.com","timestamp":"2025-06-02T15:04:56.391Z"}
+{"level":"info","message":"Password changed successfully for user: bagusmuhammadfajar27@gmail.com","timestamp":"2025-06-02T15:08:58.719Z"}
+{"level":"warn","message":"Change password attempt with incorrect old password for user: bagusmuhammadfajar27@gmail.com","timestamp":"2025-06-02T15:09:11.061Z"}
+{"level":"info","message":"Password changed successfully for user: bagusmuhammadfajar27@gmail.com","timestamp":"2025-06-02T15:09:18.150Z"}
+{"level":"info","message":"Password changed successfully for user: bagusmuhammadfajar27@gmail.com","timestamp":"2025-06-02T15:09:32.612Z"}
+{"level":"info","message":"User logged in successfully: bagusmuhammadfajar27@gmail.com","timestamp":"2025-06-02T15:21:41.451Z"}
+{"level":"info","message":"User logged in successfully: bagusmuhammadfajar27@gmail.com","timestamp":"2025-06-02T15:22:00.152Z"}
+{"level":"info","message":"User logged in successfully: bagusmuhammadfajar27@gmail.com","timestamp":"2025-06-02T15:22:51.072Z"}
+{"level":"info","message":"User logged in successfully: bagusmuhammadfajar27@gmail.com","timestamp":"2025-06-02T15:24:19.118Z"}
+{"level":"info","message":"User logged in successfully: tiara31@gmail.com","timestamp":"2025-06-02T15:24:39.743Z"}
+{"level":"info","message":"User logged in successfully: bagusmuhammadfajar27@gmail.com","timestamp":"2025-06-02T15:26:00.165Z"}
+{"level":"info","message":"Password changed successfully for user: bagusmuhammadfajar27@gmail.com","timestamp":"2025-06-02T15:26:17.457Z"}
+{"level":"info","message":"User logged in successfully: bagusmuhammadfajar27@gmail.com","timestamp":"2025-06-02T15:27:37.038Z"}
+{"level":"warn","message":"Login failed: Incorrect password for email bagusmuhammadfajar27@gmail.com","timestamp":"2025-06-02T15:28:40.057Z"}
+{"level":"info","message":"User logged in successfully: bagusmuhammadfajar27@gmail.com","timestamp":"2025-06-02T15:28:53.318Z"}
+{"level":"info","message":"User logged in successfully: tiara31@gmail.com","timestamp":"2025-06-02T15:30:57.506Z"}
+{"level":"info","message":"User logged in successfully: tiara31@gmail.com","timestamp":"2025-06-02T15:31:34.312Z"}
+{"level":"warn","message":"Login failed: Incorrect password for email bagusmuhammadfajar27@gmail.com","timestamp":"2025-06-02T15:32:11.724Z"}
+{"level":"info","message":"User logged in successfully: bagusmuhammadfajar27@gmail.com","timestamp":"2025-06-02T15:32:20.471Z"}
+{"level":"info","message":"User logged in successfully: bagusmuhammadfajar27@gmail.com","timestamp":"2025-06-02T15:38:46.472Z"}
+{"level":"info","message":"User logged in successfully: bagusmuhammadfajar27@gmail.com","timestamp":"2025-06-02T15:41:41.685Z"}
+{"level":"info","message":"Password changed successfully for user: bagusmuhammadfajar27@gmail.com","timestamp":"2025-06-02T15:42:40.337Z"}
+{"level":"info","message":"User logged in successfully: bagusmuhammadfajar27@gmail.com","timestamp":"2025-06-02T15:43:33.434Z"}
+{"level":"info","message":"User logged in successfully: tiara31@gmail.com","timestamp":"2025-06-02T15:44:39.377Z"}
+{"level":"info","message":"Password changed successfully for user: bagusmuhammadfajar27@gmail.com","timestamp":"2025-06-02T15:48:33.054Z"}
+{"level":"info","message":"User logged in successfully: bagusmuhammadfajar27@gmail.com","timestamp":"2025-06-02T15:48:53.554Z"}
+{"level":"info","message":"Password changed successfully for user: bagusmuhammadfajar27@gmail.com","timestamp":"2025-06-02T15:50:13.886Z"}
+{"level":"info","message":"User logged in successfully: bagusmuhammadfajar27@gmail.com","timestamp":"2025-06-02T15:52:45.080Z"}

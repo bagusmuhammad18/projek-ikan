@@ -879,11 +879,13 @@ router.delete("/customers/:id", auth, async (req, res) => {
   }
 });
 
-// Profil User
+// Profil User (MODIFIKASI)
 router.get("/profile", auth, async (req, res) => {
   try {
     const user = await User.findById(req.user.id)
-      .select("name email phoneNumber role addresses gender avatar isVerified") // Tambahkan isVerified
+      .select(
+        "name email phoneNumber role addresses gender avatar isVerified createdAt lastPasswordChangeAt"
+      ) // <<==== TAMBAHKAN createdAt dan lastPasswordChangeAt
       .lean();
 
     if (!user) {
@@ -898,6 +900,11 @@ router.get("/profile", auth, async (req, res) => {
       data: user,
     });
   } catch (err) {
+    logger.error("Gagal mengambil profil", {
+      userId: req.user.id,
+      error: err.message,
+      stack: err.stack,
+    });
     res.status(500).json({
       success: false,
       message: "Gagal mengambil profil",
@@ -1475,5 +1482,86 @@ router.delete("/address/:addressId", auth, async (req, res) => {
       .json({ message: "Gagal menghapus alamat", error: err.message });
   }
 });
+// Ganti Password (MODIFIKASI)
+router.post(
+  "/change-password",
+  auth,
+  [
+    body("oldPassword").notEmpty().withMessage("Password lama wajib diisi."),
+    body("newPassword")
+      .isLength({ min: 8 })
+      .withMessage("Password baru minimal 8 karakter.")
+      .matches(/[A-Z]/)
+      .withMessage("Password baru harus mengandung minimal 1 huruf kapital.")
+      .matches(/[a-z]/)
+      .withMessage("Password baru harus mengandung minimal 1 huruf kecil.")
+      .matches(/[0-9]/)
+      .withMessage("Password baru harus mengandung minimal 1 angka.")
+      .matches(/[!@#$%^&*(),.?":{}|<>]/)
+      .withMessage("Password baru harus mengandung minimal 1 simbol khusus.")
+      .not()
+      .matches(/\s/)
+      .withMessage("Password baru tidak boleh mengandung spasi."),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      const firstError = errors.array({ onlyFirstError: true })[0].msg;
+      return res
+        .status(400)
+        .json({ message: firstError, errors: errors.array() });
+    }
+
+    const appLogger = req.app.get("logger") || logger;
+
+    try {
+      const { oldPassword, newPassword } = req.body;
+      const userId = req.user.id;
+
+      const user = await User.findById(userId).select("+password"); // Pastikan password ada untuk perbandingan
+
+      if (!user) {
+        appLogger.warn(
+          `Change password attempt for non-existent user ID: ${userId}`
+        );
+        return res.status(404).json({ message: "User tidak ditemukan." });
+      }
+
+      const isMatch = await user.comparePassword(oldPassword);
+      if (!isMatch) {
+        appLogger.warn(
+          `Change password attempt with incorrect old password for user: ${user.email}`
+        );
+        return res.status(400).json({ message: "Password lama salah." });
+      }
+
+      if (oldPassword === newPassword) {
+        appLogger.warn(
+          `Change password attempt where new password is same as old for user: ${user.email}`
+        );
+        return res.status(400).json({
+          message: "Password baru tidak boleh sama dengan password lama.",
+        });
+      }
+
+      user.password = newPassword;
+      user.lastPasswordChangeAt = new Date(); // <<==== UPDATE TIMESTAMP DI SINI
+      await user.save();
+
+      appLogger.info(`Password changed successfully for user: ${user.email}`);
+      res.json({ message: "Password berhasil diubah." });
+    } catch (err) {
+      appLogger.error("Change password failed", {
+        userId: req.user.id,
+        error: err.message,
+        stack: err.stack,
+      });
+      res.status(500).json({
+        message: "Gagal mengubah password. Silakan coba lagi nanti.",
+        error: err.message,
+      });
+    }
+  }
+);
 
 module.exports = router;
