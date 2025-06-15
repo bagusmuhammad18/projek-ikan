@@ -21,38 +21,14 @@ const parseJSONFields = (req, res, next) => {
     ];
     fieldsToParse.forEach((field) => {
       if (req.body[field] && typeof req.body[field] === "string") {
-        try {
-          req.body[field] = JSON.parse(req.body[field]);
-        } catch (e) {
-          // console.error(`Error parsing field ${field}:`, e.message);
-          // throw new Error(`Invalid JSON format for field: ${field}`);
-          // Or handle more gracefully, for now, let the generic catch handle it.
-          // For simplicity, the original catch will handle it.
-        }
+        req.body[field] = JSON.parse(req.body[field]);
       }
     });
-    // Original individual parsing (keep if preferred, but the loop is cleaner)
-    // if (req.body.stocks && typeof req.body.stocks === 'string') {
-    //   req.body.stocks = JSON.parse(req.body.stocks);
-    // }
-    // if (req.body.type && typeof req.body.type === 'string') {
-    //   req.body.type = JSON.parse(req.body.type);
-    // }
-    // if (req.body.dimensions && typeof req.body.dimensions === 'string') {
-    //   req.body.dimensions = JSON.parse(req.body.dimensions);
-    // }
-    // if (req.body.existingImages && typeof req.body.existingImages === 'string') {
-    //    req.body.existingImages = JSON.parse(req.body.existingImages);
-    // }
-    // if (req.body.removedImages && typeof req.body.removedImages === 'string') {
-    //    req.body.removedImages = JSON.parse(req.body.removedImages);
-    // }
     next();
   } catch (err) {
     console.error("Error parsing JSON fields:", err);
     return res.status(400).json({
-      message:
-        "Invalid JSON format in one of the request body fields (e.g., stocks, type, dimensions, existingImages, removedImages)",
+      message: "Invalid JSON format in one of the request body fields.",
     });
   }
 };
@@ -77,15 +53,21 @@ const fileFilter = (req, file, cb) => {
   }
 };
 
+// Mengubah batas ukuran file menjadi 150 KB
 const upload = multer({
   storage: storage,
   fileFilter: fileFilter,
-  limits: { fileSize: 2 * 1024 * 1024 }, // Batas ukuran file 2MB sebelum kompresi
+  limits: { fileSize: 150 * 1024 }, // Batas ukuran file 150 KB
 });
 
 // Middleware untuk menangani error Multer
 const handleMulterError = (err, req, res, next) => {
   if (err instanceof multer.MulterError) {
+    if (err.code === "LIMIT_FILE_SIZE") {
+      return res
+        .status(400)
+        .json({ message: "Ukuran file tidak boleh melebihi 150 KB." });
+    }
     return res.status(400).json({ message: err.message });
   } else if (err) {
     return res.status(400).json({ message: err.message });
@@ -119,7 +101,7 @@ const validateProduct = [
     .isArray()
     .withMessage("Stocks must be an array")
     .custom((stocks) => {
-      if (!stocks) return true; // Allow empty stocks
+      if (!stocks) return true;
       for (const stock of stocks) {
         if (!stock.jenis || typeof stock.jenis !== "string") {
           throw new Error("Each stock entry must have a valid jenis");
@@ -147,7 +129,6 @@ const validateProduct = [
             "Each stock entry must have a valid discount (number between 0 and 100)"
           );
         }
-        // VALIDASI UNTUK SATUAN <-- DITAMBAHKAN
         if (!stock.satuan || typeof stock.satuan !== "string") {
           throw new Error("Each stock entry must have a valid satuan (unit)");
         }
@@ -163,73 +144,41 @@ const validateProduct = [
     .withMessage("isPublished must be a boolean"),
 ];
 
-// Helper untuk kompresi gambar
-async function compressImage(fileBuffer) {
+// Helper untuk optimasi gambar
+async function optimizeImage(fileBuffer) {
   try {
-    let quality = 80;
-    let compressedBuffer = fileBuffer;
-    let fileSize = fileBuffer.length;
-
-    // Kompresi hingga di bawah 1MB (1024*1024 bytes)
-    while (fileSize > 1048576 && quality > 10) {
-      compressedBuffer = await sharp(fileBuffer).jpeg({ quality }).toBuffer();
-      fileSize = compressedBuffer.length;
-      quality -= 10;
-    }
-
-    if (fileSize > 1048576) {
-      // Jika masih di atas 1MB setelah kompresi minimum, coba format webp
-      quality = 80;
-      while (fileSize > 1048576 && quality > 10) {
-        compressedBuffer = await sharp(fileBuffer).webp({ quality }).toBuffer();
-        fileSize = compressedBuffer.length;
-        quality -= 10;
-      }
-    }
-
-    if (fileSize > 1048576) {
-      console.warn(
-        "Gambar tidak bisa dikompresi di bawah 1MB dengan kualitas yang wajar, ukuran akhir:",
-        fileSize
-      );
-      // throw new Error( // Komentari error agar tetap bisa upload jika kompresi gagal
-      //   "Gambar tidak bisa dikompresi di bawah 1MB dengan kualitas yang wajar"
-      // );
-    }
-
-    return compressedBuffer;
+    const optimizedBuffer = await sharp(fileBuffer)
+      .webp({ quality: 75 })
+      .toBuffer();
+    return optimizedBuffer.length < fileBuffer.length
+      ? optimizedBuffer
+      : fileBuffer;
   } catch (err) {
-    console.error("Error compressing image:", err.message);
-    // return fileBuffer; // Kembalikan buffer asli jika ada error kompresi
-    throw new Error("Gagal mengompresi gambar: " + err.message);
+    console.error(
+      "Gagal mengoptimasi gambar, menggunakan file asli:",
+      err.message
+    );
+    return fileBuffer;
   }
 }
 
 // Helper untuk upload gambar ke Uploadcare
 async function uploadToUploadcare(fileBuffer, fileName) {
-  const compressedBuffer = await compressImage(fileBuffer);
+  const optimizedBuffer = await optimizeImage(fileBuffer);
   const formData = new FormData();
   formData.append("UPLOADCARE_PUB_KEY", process.env.UPLOADCARE_PUBLIC_KEY);
   formData.append("UPLOADCARE_STORE", "auto");
-  formData.append("file", compressedBuffer, fileName);
+  formData.append("file", optimizedBuffer, fileName);
 
   const response = await axios.post(
     "https://upload.uploadcare.com/base/",
     formData,
-    {
-      headers: formData.getHeaders(),
-    }
+    { headers: formData.getHeaders() }
   );
-
   return response.data.file;
 }
 
-// Helper untuk menghitung harga setelah diskon
-const calculateDiscountedPrice = (price, discount) => {
-  if (!discount || discount <= 0 || discount > 100) return price;
-  const discountAmount = (price * discount) / 100;
-  return price - discountAmount;
-};
+// --- INI ADALAH SATU-SATUNYA BLOK DEFINISI ROUTE YANG DIPERLUKAN ---
 
 // Get semua produk dengan filter, sorting, dan pagination (tanpa admin)
 router.get("/", async (req, res) => {
@@ -240,32 +189,23 @@ router.get("/", async (req, res) => {
       sortBy = "createdAt",
       sortOrder = "desc",
       search,
-      jenis, // Filter by product type (jenis ikan)
-      size, // Filter by product size
+      jenis,
+      size,
     } = req.query;
-    const query = { isPublished: true }; // Hanya tampilkan produk yang published
+    const query = { isPublished: true };
 
-    // Tambahkan pencarian jika ada
     if (search) {
       query.$or = [
         { name: { $regex: search, $options: "i" } },
         { description: { $regex: search, $options: "i" } },
-        { "type.jenis": { $regex: search, $options: "i" } }, // Cari juga di jenis ikan
+        { "type.jenis": { $regex: search, $options: "i" } },
       ];
     }
-
-    // Filter berdasarkan jenis ikan
-    if (jenis) {
-      query["type.jenis"] = jenis;
-    }
-
-    // Filter berdasarkan ukuran (jika diperlukan lebih spesifik, mungkin perlu $elemMatch untuk stocks)
-    if (size) {
-      query["type.size"] = size; // Ini akan mencari jika 'size' ada di array type.size
-    }
+    if (jenis) query["type.jenis"] = jenis;
+    if (size) query["type.size"] = size;
 
     const products = await Product.find(query)
-      .populate("seller", "name storeName") // Populate seller info
+      .populate("seller", "name storeName")
       .limit(parseInt(limit))
       .skip((parseInt(page) - 1) * parseInt(limit))
       .sort({ [sortBy]: sortOrder === "desc" ? -1 : 1 });
@@ -276,7 +216,6 @@ router.get("/", async (req, res) => {
       totalPages: Math.ceil(total / parseInt(limit)),
       totalItems: total,
     };
-
     res.json({ products, pagination });
   } catch (err) {
     console.error("Error fetching products:", err);
@@ -286,7 +225,7 @@ router.get("/", async (req, res) => {
   }
 });
 
-// Get semua produk (tanpa admin, untuk keperluan internal mungkin)
+// Get semua produk (internal)
 router.get("/all", async (req, res) => {
   try {
     const products = await Product.find().populate("seller", "name storeName");
@@ -296,7 +235,7 @@ router.get("/all", async (req, res) => {
   }
 });
 
-// Get satu produk by ID (tanpa admin)
+// Get satu produk by ID
 router.get("/:id", async (req, res) => {
   try {
     const product = await Product.findById(req.params.id).populate(
@@ -310,66 +249,44 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-// Buat produk baru (hanya admin)
+// Buat produk baru
 router.post(
   "/",
-  auth, // Menggunakan auth biasa dulu, checkAdmin akan ada di dalam
+  auth,
   checkAdmin,
-  upload.array("images", 5), // Maksimal 5 gambar
+  upload.array("images", 5),
   handleMulterError,
-  parseJSONFields, // Pastikan ini sebelum validateProduct
+  parseJSONFields,
   validateProduct,
   async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      console.error("Validation errors:", errors.array());
       return res.status(400).json({ errors: errors.array() });
     }
-
     try {
       let imageUrls = [];
       if (req.files && req.files.length > 0) {
         for (const file of req.files) {
-          try {
-            const fileId = await uploadToUploadcare(
-              file.buffer,
-              file.originalname
-            );
-            imageUrls.push(`https://ucarecdn.com/${fileId}/`);
-          } catch (uploadError) {
-            console.error(
-              "Error uploading one of the images:",
-              uploadError.message
-            );
-            // Anda bisa memilih untuk melanjutkan tanpa gambar ini atau mengembalikan error
-            // return res.status(500).json({ message: "Gagal mengupload salah satu gambar", error: uploadError.message });
-          }
+          const fileId = await uploadToUploadcare(
+            file.buffer,
+            file.originalname
+          );
+          imageUrls.push(`https://ucarecdn.com/${fileId}/`);
         }
       }
-
-      const dimensions = req.body.dimensions || { height: null, length: null };
-      const type = req.body.type || { jenis: [], size: [] };
-      const stocks = req.body.stocks || [];
-
-      // Pastikan setiap item stok memiliki satuan default jika tidak dikirim dari frontend
-      // Meskipun schema sudah ada default, lebih aman jika dihandle juga di sini
-      const processedStocks = stocks.map((stock) => ({
-        ...stock,
-        satuan: stock.satuan || "kg", // Default ke 'kg' jika tidak ada
-      }));
-
       const newProduct = new Product({
         ...req.body,
-        seller: req.user.id, // req.user.id didapat dari middleware auth
+        seller: req.user.id,
         images: imageUrls,
-        dimensions,
-        type,
-        stocks: processedStocks, // Gunakan stocks yang sudah diproses
-        sales: req.body.sales || 0,
+        dimensions: req.body.dimensions || { height: null, length: null },
+        type: req.body.type || { jenis: [], size: [] },
+        stocks: (req.body.stocks || []).map((stock) => ({
+          ...stock,
+          satuan: stock.satuan || "kg",
+        })),
         isPublished:
           req.body.isPublished !== undefined ? req.body.isPublished : true,
       });
-
       await newProduct.save();
       res.status(201).json(newProduct);
     } catch (err) {
@@ -381,104 +298,46 @@ router.post(
   }
 );
 
-// Update product (hanya admin)
+// Update produk
 router.put(
   "/:id",
-  auth, // Menggunakan auth biasa dulu, checkAdmin akan ada di dalam
+  auth,
   checkAdmin,
-  upload.array("images", 5), // Izinkan upload gambar baru saat update
+  upload.array("images", 5),
   handleMulterError,
-  parseJSONFields, // Pastikan ini sebelum validateProduct
+  parseJSONFields,
   validateProduct,
   async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({ errors: errors.array() });
     }
-
     try {
-      const product = await Product.findById(req.params.id);
-      if (!product) {
-        return res.status(404).json({ message: "Product not found" });
-      }
-
-      let existingImageUrls = product.images || [];
-      // Use req.body.existingImages directly if parseJSONFields handled it
-      if (req.body.existingImages && Array.isArray(req.body.existingImages)) {
-        existingImageUrls = req.body.existingImages;
-      }
-
-      let removedImageUrls = [];
-      if (req.body.removedImages && Array.isArray(req.body.removedImages)) {
-        removedImageUrls = req.body.removedImages;
-      }
-
-      const filteredImageUrls = existingImageUrls.filter(
-        (url) => !removedImageUrls.includes(url)
-      );
-      let imageUrls = [...filteredImageUrls];
-
+      let imageUrls = req.body.existingImages
+        ? JSON.parse(req.body.existingImages)
+        : [];
       if (req.files && req.files.length > 0) {
         const uploadPromises = req.files.map((file) =>
-          uploadToUploadcare(file.buffer, file.originalname).catch((err) => {
-            console.error(
-              "Error uploading one of the new images:",
-              err.message
-            );
-            return null;
-          })
+          uploadToUploadcare(file.buffer, file.originalname)
         );
         const newFileIds = await Promise.all(uploadPromises);
-        const newImageUrls = newFileIds
-          .filter((fileId) => fileId !== null)
-          .map((fileId) => `https://ucarecdn.com/${fileId}/`);
+        const newImageUrls = newFileIds.map(
+          (fileId) => `https://ucarecdn.com/${fileId}/`
+        );
         imageUrls = [...imageUrls, ...newImageUrls];
       }
 
-      imageUrls = [...new Set(imageUrls)];
-
-      // Prepare fields to update from req.body
-      const fieldsToUpdate = { ...req.body };
-
-      // !!! IMPORTANT FIX FOR THE SELLER CASTERROR !!!
-      // The seller ID should not be changed via this update method,
-      // or if it is, req.body.seller should be just the ID string.
-      // To prevent the error, remove it from the update payload if it's an object.
+      const fieldsToUpdate = { ...req.body, images: [...new Set(imageUrls)] };
       delete fieldsToUpdate.seller;
-      // Also remove fields managed separately or that shouldn't be mass-assigned from req.body
-      delete fieldsToUpdate.images; // Will be set from imageUrls
       delete fieldsToUpdate.existingImages;
       delete fieldsToUpdate.removedImages;
-
-      // Assign processed images
-      fieldsToUpdate.images = imageUrls;
-
-      // Process stocks if present in req.body (already parsed by parseJSONFields)
-      if (req.body.stocks) {
-        fieldsToUpdate.stocks = req.body.stocks.map((stock) => ({
+      if (fieldsToUpdate.stocks) {
+        fieldsToUpdate.stocks = fieldsToUpdate.stocks.map((stock) => ({
           ...stock,
-          _id: stock._id ? String(stock._id) : undefined, // Ensure _id is a string or undefined
+          _id: stock._id ? String(stock._id) : undefined,
           satuan: stock.satuan || "kg",
         }));
       }
-
-      // Process type if present (already parsed)
-      if (req.body.type) {
-        fieldsToUpdate.type = req.body.type;
-      }
-
-      // Process dimensions if present (already parsed)
-      if (req.body.dimensions) {
-        fieldsToUpdate.dimensions = req.body.dimensions;
-      }
-
-      // Handle other fields explicitly if they need special processing or validation
-      // For example: weight, sales, isPublished
-      if (req.body.weight !== undefined)
-        fieldsToUpdate.weight = req.body.weight;
-      if (req.body.sales !== undefined) fieldsToUpdate.sales = req.body.sales;
-      if (req.body.isPublished !== undefined)
-        fieldsToUpdate.isPublished = req.body.isPublished;
 
       const updatedProduct = await Product.findByIdAndUpdate(
         req.params.id,
@@ -486,21 +345,11 @@ router.put(
         { new: true, runValidators: true }
       );
 
+      if (!updatedProduct)
+        return res.status(404).json({ message: "Product not found" });
       res.json(updatedProduct);
     } catch (err) {
       console.error("Error updating product:", err);
-      if (err.name === "ValidationError") {
-        return res
-          .status(400)
-          .json({ message: "Validation failed", errors: err.errors });
-      }
-      if (err.name === "CastError") {
-        return res.status(400).json({
-          message: `Data type error: ${err.message}`,
-          path: err.path,
-          value: err.value,
-        });
-      }
       res
         .status(500)
         .json({ message: "Failed to update product", error: err.message });
@@ -508,18 +357,11 @@ router.put(
   }
 );
 
-// Delete produk (hanya admin)
+// Delete produk
 router.delete("/:id", auth, checkAdmin, async (req, res) => {
   try {
-    const product = await Product.findById(req.params.id);
+    const product = await Product.findByIdAndDelete(req.params.id);
     if (!product) return res.status(404).json({ message: "Product not found" });
-
-    // Logika tambahan: Pastikan admin hanya bisa delete produk miliknya (jika bukan superadmin)
-    // if (product.seller.toString() !== req.user.id && req.user.role !== 'superadmin') {
-    //   return res.status(403).json({ message: "User not authorized to delete this product" });
-    // }
-
-    await product.deleteOne(); // Menggunakan deleteOne() pada instance model
     res.json({ message: "Product deleted" });
   } catch (err) {
     console.error("Error deleting product:", err);

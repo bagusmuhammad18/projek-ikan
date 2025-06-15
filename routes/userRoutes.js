@@ -56,12 +56,17 @@ const fileFilter = (req, file, cb) => {
 const upload = multer({
   storage: storage,
   fileFilter: fileFilter,
-  limits: { fileSize: 5 * 1024 * 1024 }, // Batas ukuran file 5MB sebelum kompresi
+  limits: { fileSize: 150 * 1024 }, // Batas ukuran file 150 KB
 });
 
 // Middleware untuk menangani error Multer
 const handleMulterError = (err, req, res, next) => {
   if (err instanceof multer.MulterError) {
+    if (err.code === "LIMIT_FILE_SIZE") {
+      return res
+        .status(400)
+        .json({ message: "Ukuran file tidak boleh melebihi 150 KB." });
+    }
     return res.status(400).json({ message: err.message });
   } else if (err) {
     return res.status(400).json({ message: err.message });
@@ -72,39 +77,33 @@ const handleMulterError = (err, req, res, next) => {
 // Middleware untuk sanitasi query MongoDB (mencegah NoSQL Injection)
 router.use(mongoSanitize());
 
-// Helper untuk kompresi gambar
-async function compressImage(fileBuffer) {
+async function optimizeImage(fileBuffer) {
   try {
-    let quality = 80;
-    let compressedBuffer = fileBuffer;
-    let fileSize = fileBuffer.length;
-
-    while (fileSize > 1048576 && quality > 10) {
-      // Batas 1MB
-      compressedBuffer = await sharp(fileBuffer).jpeg({ quality }).toBuffer();
-      fileSize = compressedBuffer.length;
-      quality -= 10;
-    }
-
-    if (fileSize > 1048576) {
-      throw new Error(
-        "Gambar tidak bisa dikompresi di bawah 1MB dengan kualitas yang wajar"
-      );
-    }
-
-    return compressedBuffer;
+    // Coba konversi ke format WebP dengan kualitas 75 untuk optimasi
+    const optimizedBuffer = await sharp(fileBuffer)
+      .webp({ quality: 75 })
+      .toBuffer();
+    // Gunakan hasil optimasi hanya jika ukurannya lebih kecil dari file asli
+    return optimizedBuffer.length < fileBuffer.length
+      ? optimizedBuffer
+      : fileBuffer;
   } catch (err) {
-    throw new Error("Gagal mengompresi gambar: " + err.message);
+    console.error(
+      "Gagal mengoptimasi gambar, menggunakan file asli:",
+      err.message
+    );
+    // Jika terjadi error, kembalikan buffer asli agar proses tidak gagal
+    return fileBuffer;
   }
 }
 
 // Helper untuk upload gambar ke Uploadcare
 async function uploadToUploadcare(fileBuffer, fileName) {
-  const compressedBuffer = await compressImage(fileBuffer);
+  const optimizedBuffer = await optimizeImage(fileBuffer);
   const formData = new FormData();
   formData.append("UPLOADCARE_PUB_KEY", process.env.UPLOADCARE_PUBLIC_KEY);
   formData.append("UPLOADCARE_STORE", "auto");
-  formData.append("file", compressedBuffer, fileName);
+  formData.append("file", optimizedBuffer, fileName);
 
   const response = await axios.post(
     "https://upload.uploadcare.com/base/",
@@ -917,8 +916,8 @@ router.get("/profile", auth, async (req, res) => {
 router.post(
   "/profile/avatar",
   auth,
-  upload.single("avatar"),
-  handleMulterError,
+  upload.single("avatar"), // Menggunakan 'upload' yang sudah disetel ke 150KB
+  handleMulterError, // Menggunakan 'handleMulterError' yang sudah diperbarui
   async (req, res) => {
     try {
       if (!req.file) {
@@ -932,6 +931,7 @@ router.post(
         return res.status(404).json({ message: "User tidak ditemukan" });
       }
 
+      // 'uploadToUploadcare' yang baru sudah otomatis dipanggil di sini
       const fileId = await uploadToUploadcare(
         req.file.buffer,
         req.file.originalname

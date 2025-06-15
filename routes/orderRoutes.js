@@ -30,7 +30,7 @@ const fileFilter = (req, file, cb) => {
 const upload = multer({
   storage: storage,
   fileFilter: fileFilter,
-  limits: { fileSize: 0.5 * 1024 * 1024 }, // 0.5 MB
+  limits: { fileSize: 150 * 1024 }, // Batas 150 KB
 });
 
 // Middleware untuk menangani error Multer
@@ -39,7 +39,7 @@ const handleMulterError = (err, req, res, next) => {
     if (err.code === "LIMIT_FILE_SIZE") {
       return res
         .status(400)
-        .json({ message: "Ukuran file terlalu besar. Maksimum 0.5MB." });
+        .json({ message: "Ukuran file tidak boleh melebihi 150 KB." });
     }
     return res.status(400).json({ message: err.message });
   } else if (err) {
@@ -72,47 +72,30 @@ const parseJSONFields = (req, res, next) => {
   next();
 };
 
-// Fungsi untuk kompresi gambar
-async function compressImage(fileBuffer) {
+async function optimizeImage(fileBuffer) {
   try {
-    let quality = 80;
-    let compressedBuffer = await sharp(fileBuffer)
-      .jpeg({ quality, progressive: true, optimizeScans: true })
+    const optimizedBuffer = await sharp(fileBuffer)
+      .webp({ quality: 75 })
       .toBuffer();
-    let fileSize = compressedBuffer.length;
-
-    while (fileSize > 500 * 1024 && quality > 10) {
-      // Target 500KB
-      quality -= 10;
-      compressedBuffer = await sharp(fileBuffer)
-        .jpeg({ quality, progressive: true, optimizeScans: true })
-        .toBuffer();
-      fileSize = compressedBuffer.length;
-    }
-
-    if (fileSize > 500 * 1024) {
-      const metadata = await sharp(compressedBuffer).metadata();
-      if (metadata.width && metadata.width > 1200) {
-        compressedBuffer = await sharp(compressedBuffer)
-          .resize({ width: 1200 })
-          .jpeg({ quality: Math.max(quality, 40) })
-          .toBuffer();
-      }
-    }
-    return compressedBuffer;
+    return optimizedBuffer.length < fileBuffer.length
+      ? optimizedBuffer
+      : fileBuffer;
   } catch (err) {
-    console.error("Gagal mengompresi gambar:", err);
-    throw new Error("Gagal mengompresi gambar: " + err.message);
+    console.error(
+      "Gagal mengoptimasi gambar, menggunakan file asli:",
+      err.message
+    );
+    return fileBuffer;
   }
 }
 
 // Fungsi untuk upload ke Uploadcare
 async function uploadToUploadcare(fileBuffer, fileName) {
-  const compressedBuffer = await compressImage(fileBuffer);
-  const formData = new FormDataNode(); // Gunakan alias FormDataNode
+  const optimizedBuffer = await optimizeImage(fileBuffer);
+  const formData = new FormDataNode();
   formData.append("UPLOADCARE_PUB_KEY", process.env.UPLOADCARE_PUBLIC_KEY);
   formData.append("UPLOADCARE_STORE", "auto");
-  formData.append("file", compressedBuffer, fileName);
+  formData.append("file", optimizedBuffer, fileName);
 
   const response = await axios.post(
     "https://upload.uploadcare.com/base/",
