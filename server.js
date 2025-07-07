@@ -27,6 +27,7 @@ app.use((req, res, next) => {
     "https://iwak-seven.vercel.app",
     "http://localhost:5000",
     "https://siphiko.vercel.app",
+    "https://benihikan.surakarta.go.id",
     // Tambahkan origin frontend Anda yang lain jika ada
   ];
   const origin = req.headers.origin;
