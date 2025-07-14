@@ -303,19 +303,24 @@ router.put(
   "/:id",
   auth,
   checkAdmin,
-  upload.array("images", 5),
-  handleMulterError,
-  parseJSONFields,
-  validateProduct,
+  upload.array("images", 5), // Tangani file upload
+  handleMulterError, // Tangani error upload
+  parseJSONFields, // Parse string JSON menjadi objek/array JS
+  validateProduct, // Validasi data yang sudah di-parse
   async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({ errors: errors.array() });
     }
+
     try {
-      let imageUrls = req.body.existingImages
-        ? JSON.parse(req.body.existingImages)
-        : [];
+      // --- PERBAIKAN DIMULAI DI SINI ---
+
+      // 1. Ambil gambar yang sudah ada langsung dari req.body. Sudah di-parse oleh middleware.
+      // Beri nilai default array kosong jika tidak ada.
+      let existingImages = req.body.existingImages || [];
+
+      // 2. Upload file gambar baru (jika ada) ke Uploadcare
       if (req.files && req.files.length > 0) {
         const uploadPromises = req.files.map((file) =>
           uploadToUploadcare(file.buffer, file.originalname)
@@ -324,32 +329,55 @@ router.put(
         const newImageUrls = newFileIds.map(
           (fileId) => `https://ucarecdn.com/${fileId}/`
         );
-        imageUrls = [...imageUrls, ...newImageUrls];
+        // Gabungkan gambar lama dengan gambar baru
+        existingImages.push(...newImageUrls);
       }
 
-      const fieldsToUpdate = { ...req.body, images: [...new Set(imageUrls)] };
+      // 3. Buat array gambar final dengan memastikan tidak ada duplikat
+      const finalImageUrls = [...new Set(existingImages)];
+
+      // 4. Siapkan data untuk diupdate
+      const fieldsToUpdate = {
+        ...req.body,
+        images: finalImageUrls, // Gunakan array gambar yang sudah final
+      };
+
+      // 5. Hapus field yang tidak perlu disimpan langsung ke model Product
       delete fieldsToUpdate.seller;
       delete fieldsToUpdate.existingImages;
-      delete fieldsToUpdate.removedImages;
+      delete fieldsToUpdate.removedImages; // Anda belum menggunakan ini, tapi sebaiknya tetap dihapus
+      // `seller` tidak perlu dihapus karena findByIdAndUpdate tidak akan mengubahnya
+      // jika tidak ada di dalam $set, dan Anda juga tidak menyertakan `seller` di body form.
+
+      // Opsional: Pastikan struktur stocks sudah benar sebelum update
       if (fieldsToUpdate.stocks) {
         fieldsToUpdate.stocks = fieldsToUpdate.stocks.map((stock) => ({
           ...stock,
-          _id: stock._id ? String(stock._id) : undefined,
+          _id: stock._id ? String(stock._id) : undefined, // Pastikan _id adalah string jika ada
           satuan: stock.satuan || "kg",
         }));
       }
 
+      // --- PERBAIKAN SELESAI ---
+
       const updatedProduct = await Product.findByIdAndUpdate(
         req.params.id,
         { $set: fieldsToUpdate },
-        { new: true, runValidators: true }
+        { new: true, runValidators: true } // new: true mengembalikan dokumen yang sudah di-update
       );
 
-      if (!updatedProduct)
+      if (!updatedProduct) {
         return res.status(404).json({ message: "Product not found" });
+      }
+
       res.json(updatedProduct);
     } catch (err) {
-      console.error("Error updating product:", err);
+      // Tambahkan log yang lebih detail untuk debugging di masa depan
+      console.error("Error updating product:", {
+        productId: req.params.id,
+        requestBody: req.body,
+        error: err.stack, // .stack memberikan trace lengkap
+      });
       res
         .status(500)
         .json({ message: "Failed to update product", error: err.message });
