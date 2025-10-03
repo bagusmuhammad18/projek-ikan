@@ -11,6 +11,7 @@ const multer = require("multer");
 const axios = require("axios");
 const FormDataNode = require("form-data"); // Menggunakan alias agar tidak bentrok dengan FormData global browser
 const sharp = require("sharp");
+const { sendNewOrderNotification } = require("../utils/nodemailer");
 
 // ... (konfigurasi multer, parseJSONFields, compressImage, uploadToUploadcare, calculateDiscountedPrice tetap sama) ...
 // Konfigurasi Multer untuk upload file
@@ -150,7 +151,7 @@ router.post(
       .withMessage("Satuan item wajib diisi")
       .isIn(["kg", "ekor"])
       .withMessage("Satuan item harus 'kg' atau 'ekor'"),
-    body("source") // Validasi untuk 'source'
+    body("source")
       .notEmpty()
       .withMessage("Sumber order (source) wajib diisi.")
       .isIn(["cart", "buyNow"])
@@ -162,8 +163,8 @@ router.post(
       "RECEIVED AT POST /api/orders - Timestamp:",
       new Date().toISOString()
     );
-    console.log("Full req.body:", JSON.stringify(req.body, null, 2)); // Log seluruh body
-    console.log("req.body.source received:", req.body.source); // Fokus pada source
+    console.log("Full req.body:", JSON.stringify(req.body, null, 2));
+    console.log("req.body.source received:", req.body.source);
     console.log("req.user.id (for cart deletion):", req.user.id);
     console.log("----------------------------------------------------");
     const errors = validationResult(req);
@@ -176,12 +177,11 @@ router.post(
         items: clientOrderItems,
         source,
         shippingCost: clientShippingCost,
-      } = req.body; // Ambil 'source' dari req.body
+      } = req.body;
       let orderItems = [];
       let calculatedTotalAmount = 0;
       const shippingCost = parseFloat(clientShippingCost) || 0;
 
-      // Validasi dan pemrosesan item dari clientOrderItems (yang selalu ada karena frontend mengirimkannya)
       if (
         !clientOrderItems ||
         !Array.isArray(clientOrderItems) ||
@@ -228,15 +228,15 @@ router.post(
         }
 
         const price = stockEntry.price;
-        const discount = stockEntry.discount || 0; // Pastikan discount ada
+        const discount = stockEntry.discount || 0;
         const discountedPrice = calculateDiscountedPrice(price, discount);
 
         orderItems.push({
           product: product._id,
           quantity: item.quantity,
-          price: price, // Simpan harga asli per item
-          discount: discount, // Simpan diskon per item
-          discountedPrice: discountedPrice, // Simpan harga setelah diskon per item
+          price: price,
+          discount: discount,
+          discountedPrice: discountedPrice,
           jenis: item.jenis,
           size: item.size,
           satuan: item.satuan,
@@ -244,7 +244,6 @@ router.post(
         calculatedTotalAmount += item.quantity * discountedPrice;
       }
 
-      // Mengurangi stok setelah semua item divalidasi
       for (const item of orderItems) {
         const product = await Product.findById(item.product);
         const stockEntry = product.stocks.find(
@@ -278,16 +277,27 @@ router.post(
         shippingCost: shippingCost,
         paymentMethod: req.body.paymentMethod,
         proofOfPayment: proofOfPaymentUrl,
-        orderSource: source, // Simpan sumber order jika perlu dilacak
+        orderSource: source,
       });
 
-      await newOrder.save();
+      const savedOrder = await newOrder.save();
+
+      try {
+        const customer = await User.findById(req.user.id);
+        if (customer) {
+          sendNewOrderNotification(savedOrder, customer);
+        }
+      } catch (emailError) {
+        console.error(
+          "Gagal saat persiapan mengirim email notifikasi:",
+          emailError
+        );
+      }
 
       await User.findByIdAndUpdate(req.user.id, {
-        $push: { orders: newOrder._id },
+        $push: { orders: savedOrder._id },
       });
 
-      // PERUBAHAN DI SINI: Hapus keranjang HANYA jika order berasal dari 'cart'
       if (source === "cart") {
         const cartDeletionResult = await Cart.findOneAndDelete({
           user: req.user.id,
@@ -307,7 +317,7 @@ router.post(
         );
       }
 
-      res.status(201).json(newOrder);
+      res.status(201).json(savedOrder);
     } catch (err) {
       console.error("Checkout error:", err);
       res
