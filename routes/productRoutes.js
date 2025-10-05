@@ -8,6 +8,7 @@ const multer = require("multer");
 const axios = require("axios");
 const FormData = require("form-data");
 const sharp = require("sharp");
+const StockHistory = require("../models/StockHistory");
 
 // Middleware to parse JSON strings in req.body
 const parseJSONFields = (req, res, next) => {
@@ -235,6 +236,87 @@ router.get("/all", async (req, res) => {
   }
 });
 
+router.get("/:id/stock-report", auth, checkAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { startDate, endDate } = req.query;
+
+    if (!startDate || !endDate) {
+      return res
+        .status(400)
+        .json({ message: "startDate and endDate are required" });
+    }
+
+    const product = await Product.findById(id).select("name stocks");
+    if (!product) {
+      return res.status(404).json({ message: "Product not found" });
+    }
+
+    // Ambil semua entri history sebelum startDate untuk menemukan stok terakhir dari setiap variasi
+    const historyBeforeStart = await StockHistory.find({
+      product: id,
+      createdAt: { $lt: new Date(startDate) },
+    }).sort({ createdAt: -1 });
+
+    const initialStockMap = new Map();
+    // Inisialisasi semua variasi produk dengan stok 0
+    product.stocks.forEach((s) => {
+      const key = `${s.jenis}-${s.size}`;
+      initialStockMap.set(key, 0);
+    });
+
+    // Update map dengan nilai stok terakhir yang ditemukan dari history
+    historyBeforeStart.forEach((h) => {
+      const key = `${h.jenis}-${h.size}`;
+      if (!initialStockMap.has(key)) {
+        // Hanya ambil entri paling baru untuk setiap variasi
+        initialStockMap.set(key, h.stockAfterChange);
+      }
+    });
+
+    // Jumlahkan semua stok awal dari setiap variasi
+    const initialStock = Array.from(initialStockMap.values()).reduce(
+      (sum, stock) => sum + stock,
+      0
+    );
+
+    // Ambil semua transaksi dalam rentang tanggal
+    const historyInRange = await StockHistory.find({
+      product: id,
+      createdAt: {
+        $gte: new Date(startDate),
+        $lte: new Date(new Date(endDate).setHours(23, 59, 59, 999)), // Sampai akhir hari
+      },
+    }).sort({ createdAt: "asc" });
+
+    // Proses transaksi untuk format laporan
+    let runningStock = initialStock;
+    const transactions = historyInRange.map((entry) => {
+      // Hitung ulang running stock di sini untuk akurasi per baris
+      // Stok sebelumnya + perubahan saat ini
+      const stockBeforeThisEntry = runningStock;
+      runningStock += entry.quantityChange;
+
+      return {
+        date: entry.createdAt,
+        added: entry.quantityChange > 0 ? entry.quantityChange : null,
+        sold: entry.quantityChange < 0 ? -entry.quantityChange : null, // tampilkan sebagai angka positif
+        remaining: stockBeforeThisEntry + entry.quantityChange,
+        note: entry.note,
+      };
+    });
+
+    res.json({
+      productName: product.name,
+      initialStock: initialStock,
+      transactions: transactions,
+    });
+  } catch (err) {
+    console.error("Error generating stock report:", err);
+    res.status(500).json({ message: "Server error", error: err.message });
+  }
+});
+
 // Get satu produk by ID
 router.get("/:id", async (req, res) => {
   try {
@@ -303,10 +385,10 @@ router.put(
   "/:id",
   auth,
   checkAdmin,
-  upload.array("images", 5), // Tangani file upload
-  handleMulterError, // Tangani error upload
-  parseJSONFields, // Parse string JSON menjadi objek/array JS
-  validateProduct, // Validasi data yang sudah di-parse
+  upload.array("images", 5),
+  handleMulterError,
+  parseJSONFields,
+  validateProduct,
   async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -314,13 +396,17 @@ router.put(
     }
 
     try {
-      // --- PERBAIKAN DIMULAI DI SINI ---
+      const productBeforeUpdate = await Product.findById(req.params.id).lean();
+      if (!productBeforeUpdate) {
+        return res.status(404).json({ message: "Product not found" });
+      }
+      // Membuat map dari stok lama untuk akses cepat
+      const oldStocksMap = new Map(
+        productBeforeUpdate.stocks.map((s) => `${s.jenis}-${s.size}`, s)
+      );
 
-      // 1. Ambil gambar yang sudah ada langsung dari req.body. Sudah di-parse oleh middleware.
-      // Beri nilai default array kosong jika tidak ada.
       let existingImages = req.body.existingImages || [];
 
-      // 2. Upload file gambar baru (jika ada) ke Uploadcare
       if (req.files && req.files.length > 0) {
         const uploadPromises = req.files.map((file) =>
           uploadToUploadcare(file.buffer, file.originalname)
@@ -329,42 +415,57 @@ router.put(
         const newImageUrls = newFileIds.map(
           (fileId) => `https://ucarecdn.com/${fileId}/`
         );
-        // Gabungkan gambar lama dengan gambar baru
         existingImages.push(...newImageUrls);
       }
 
-      // 3. Buat array gambar final dengan memastikan tidak ada duplikat
       const finalImageUrls = [...new Set(existingImages)];
 
-      // 4. Siapkan data untuk diupdate
       const fieldsToUpdate = {
         ...req.body,
-        images: finalImageUrls, // Gunakan array gambar yang sudah final
+        images: finalImageUrls,
       };
 
-      // 5. Hapus field yang tidak perlu disimpan langsung ke model Product
       delete fieldsToUpdate.seller;
       delete fieldsToUpdate.existingImages;
-      delete fieldsToUpdate.removedImages; // Anda belum menggunakan ini, tapi sebaiknya tetap dihapus
-      // `seller` tidak perlu dihapus karena findByIdAndUpdate tidak akan mengubahnya
-      // jika tidak ada di dalam $set, dan Anda juga tidak menyertakan `seller` di body form.
+      delete fieldsToUpdate.removedImages;
 
-      // Opsional: Pastikan struktur stocks sudah benar sebelum update
       if (fieldsToUpdate.stocks) {
         fieldsToUpdate.stocks = fieldsToUpdate.stocks.map((stock) => ({
           ...stock,
-          _id: stock._id ? String(stock._id) : undefined, // Pastikan _id adalah string jika ada
+          _id: stock._id ? String(stock._id) : undefined,
           satuan: stock.satuan || "kg",
         }));
       }
 
-      // --- PERBAIKAN SELESAI ---
-
       const updatedProduct = await Product.findByIdAndUpdate(
         req.params.id,
         { $set: fieldsToUpdate },
-        { new: true, runValidators: true } // new: true mengembalikan dokumen yang sudah di-update
+        { new: true, runValidators: true }
       );
+
+      if (updatedProduct) {
+        const historyPromises = updatedProduct.stocks.map(async (newStock) => {
+          const oldStock = oldStocksMap.get(
+            `${newStock.jenis}-${newStock.size}`
+          );
+          const oldStockCount = oldStock ? oldStock.stock : 0;
+
+          if (newStock.stock !== oldStockCount) {
+            const quantityChange = newStock.stock - oldStockCount;
+            await new StockHistory({
+              product: updatedProduct._id,
+              jenis: newStock.jenis,
+              size: newStock.size,
+              type: quantityChange > 0 ? "penambahan" : "koreksi",
+              quantityChange: quantityChange,
+              stockAfterChange: newStock.stock,
+              note: "Stok diperbarui oleh admin",
+              userActionBy: req.user.id,
+            }).save();
+          }
+        });
+        await Promise.all(historyPromises);
+      }
 
       if (!updatedProduct) {
         return res.status(404).json({ message: "Product not found" });
@@ -372,11 +473,10 @@ router.put(
 
       res.json(updatedProduct);
     } catch (err) {
-      // Tambahkan log yang lebih detail untuk debugging di masa depan
       console.error("Error updating product:", {
         productId: req.params.id,
         requestBody: req.body,
-        error: err.stack, // .stack memberikan trace lengkap
+        error: err.stack,
       });
       res
         .status(500)

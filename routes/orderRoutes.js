@@ -12,6 +12,7 @@ const axios = require("axios");
 const FormDataNode = require("form-data"); // Menggunakan alias agar tidak bentrok dengan FormData global browser
 const sharp = require("sharp");
 const { sendNewOrderNotification } = require("../utils/nodemailer");
+const StockHistory = require("../models/StockHistory");
 
 // ... (konfigurasi multer, parseJSONFields, compressImage, uploadToUploadcare, calculateDiscountedPrice tetap sama) ...
 // Konfigurasi Multer untuk upload file
@@ -122,6 +123,7 @@ router.post(
   handleMulterError,
   parseJSONFields,
   [
+    // ... (semua validasi body tetap sama)
     body("shippingAddress.recipientName")
       .notEmpty()
       .withMessage("Nama penerima wajib diisi"),
@@ -217,14 +219,18 @@ router.post(
         );
 
         if (!stockEntry) {
-          return res.status(400).json({
-            message: `Stok untuk produk ${product.name} jenis ${item.jenis}, ukuran ${item.size}, satuan ${item.satuan} tidak ditemukan`,
-          });
+          return res
+            .status(400)
+            .json({
+              message: `Stok untuk produk ${product.name} jenis ${item.jenis}, ukuran ${item.size}, satuan ${item.satuan} tidak ditemukan`,
+            });
         }
         if (item.quantity > stockEntry.stock) {
-          return res.status(400).json({
-            message: `Stok untuk produk ${product.name} jenis ${item.jenis} ukuran ${item.size} satuan ${item.satuan} tidak mencukupi. Stok tersedia: ${stockEntry.stock}`,
-          });
+          return res
+            .status(400)
+            .json({
+              message: `Stok untuk produk ${product.name} jenis ${item.jenis} ukuran ${item.size} satuan ${item.satuan} tidak mencukupi. Stok tersedia: ${stockEntry.stock}`,
+            });
         }
 
         const price = stockEntry.price;
@@ -277,10 +283,42 @@ router.post(
         shippingCost: shippingCost,
         paymentMethod: req.body.paymentMethod,
         proofOfPayment: proofOfPaymentUrl,
-        orderSource: source,
+        orderSource: source, // Pastikan field ini ada di skema jika digunakan
       });
 
       const savedOrder = await newOrder.save();
+
+      // --- TAMBAHAN: Pencatatan Riwayat Stok Penjualan ---
+      try {
+        const customer = await User.findById(req.user.id).select("name").lean();
+        const buyerName = customer ? customer.name : "Customer";
+
+        const historyPromises = savedOrder.items.map(async (item) => {
+          const product = await Product.findById(item.product).lean();
+          const stockInfo = product.stocks.find(
+            (s) => s.jenis === item.jenis && s.size === item.size
+          );
+          const stockAfterChange = stockInfo ? stockInfo.stock : 0;
+
+          return new StockHistory({
+            product: item.product,
+            jenis: item.jenis,
+            size: item.size,
+            type: "penjualan",
+            quantityChange: -item.quantity, // Negatif karena stok berkurang
+            stockAfterChange: stockAfterChange,
+            note: `Pesanan oleh ${buyerName} (ID: ...${savedOrder._id
+              .toString()
+              .slice(-5)})`,
+            relatedOrder: savedOrder._id,
+            userActionBy: req.user.id,
+          }).save();
+        });
+        await Promise.all(historyPromises);
+      } catch (historyError) {
+        console.error("Gagal mencatat riwayat stok penjualan:", historyError);
+      }
+      // --- AKHIR TAMBAHAN ---
 
       try {
         const customer = await User.findById(req.user.id);
@@ -462,10 +500,12 @@ router.put(
 
     try {
       if (req.user.role !== "admin") {
-        return res.status(403).json({
-          message:
-            "Akses ditolak. Hanya admin yang dapat mengubah status pesanan.",
-        });
+        return res
+          .status(403)
+          .json({
+            message:
+              "Akses ditolak. Hanya admin yang dapat mengubah status pesanan.",
+          });
       }
 
       const { status, trackingNumber, shippingMethod } = req.body;
@@ -481,9 +521,11 @@ router.put(
         (oldStatus === "Cancelled" || oldStatus === "Delivered") &&
         oldStatus !== status
       ) {
-        return res.status(400).json({
-          message: `Pesanan yang sudah ${oldStatus} tidak bisa diubah statusnya.`,
-        });
+        return res
+          .status(400)
+          .json({
+            message: `Pesanan yang sudah ${oldStatus} tidak bisa diubah statusnya.`,
+          });
       }
 
       order.status = status;
@@ -498,9 +540,11 @@ router.put(
 
       if (status === "Shipped" && order.paymentMethod.toLowerCase() === "cod") {
         if (!req.file && !order.codProof) {
-          return res.status(400).json({
-            message: "Bukti COD (codProof) diperlukan untuk pengiriman COD.",
-          });
+          return res
+            .status(400)
+            .json({
+              message: "Bukti COD (codProof) diperlukan untuk pengiriman COD.",
+            });
         }
         if (req.file) {
           const fileId = await uploadToUploadcare(
@@ -534,6 +578,29 @@ router.put(
             if (stockEntry) {
               stockEntry.stock += item.quantity;
               await product.save();
+
+              // --- TAMBAHAN: Pencatatan Riwayat Stok Pembatalan ---
+              try {
+                await new StockHistory({
+                  product: item.product,
+                  jenis: item.jenis,
+                  size: item.size,
+                  type: "koreksi", // Tipe 'koreksi' untuk pengembalian/pembatalan
+                  quantityChange: item.quantity, // Positif karena stok bertambah
+                  stockAfterChange: stockEntry.stock,
+                  note: `Pembatalan Pesanan (ID: ...${order._id
+                    .toString()
+                    .slice(-5)})`,
+                  relatedOrder: order._id,
+                  userActionBy: req.user.id, // Admin yang melakukan aksi
+                }).save();
+              } catch (historyError) {
+                console.error(
+                  "Gagal mencatat riwayat stok pembatalan:",
+                  historyError
+                );
+              }
+              // --- AKHIR TAMBAHAN ---
             }
           }
         }
@@ -552,10 +619,12 @@ router.put(
           .status(400)
           .json({ message: "Format ID pesanan tidak valid" });
       }
-      res.status(500).json({
-        message: "Gagal memperbarui status pesanan",
-        error: err.message,
-      });
+      res
+        .status(500)
+        .json({
+          message: "Gagal memperbarui status pesanan",
+          error: err.message,
+        });
     }
   }
 );
