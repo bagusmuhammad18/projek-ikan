@@ -402,7 +402,7 @@ router.put(
       }
       // Membuat map dari stok lama untuk akses cepat
       const oldStocksMap = new Map(
-        productBeforeUpdate.stocks.map((s) => `${s.jenis}-${s.size}`, s)
+        productBeforeUpdate.stocks.map((s) => [`${s.jenis}-${s.size}`, s])
       );
 
       let existingImages = req.body.existingImages || [];
