@@ -24,7 +24,7 @@ const sendNewOrderNotification = async (order, customer) => {
 
   const mailOptions = {
     from: '"Marketplace Siphiko" <noreply.marketplaceiwak@gmail.com>',
-    to: "aupperikanan@gmail.com", // Email admin tujuan notifikasi
+    to: "bagusmuhammadfajar27@gmail.com", // Email admin tujuan notifikasi
     subject: `Pesanan Baru Diterima`,
     html: `
       <div style="font-family: Arial, sans-serif; line-height: 1.6;">

@@ -672,7 +672,6 @@ router.post(
 
       const resetUrl = `${process.env.CLIENT_URL}/reset-password/${resetToken}`;
       const appName = "Marketplace Siphiko";
-      const supportEmail = "dukungan@marketplaceiwak.com";
 
       const mailOptions = {
         from: `"${appName}" <noreply.marketplaceiwak@gmail.com>`,
@@ -735,7 +734,6 @@ router.post(
           Silakan kunjungi link berikut untuk mengatur ulang kata sandi Anda:
           ${resetUrl}
           Link ini akan kedaluwarsa dalam 1 jam. Jika Anda tidak meminta reset password, Anda bisa mengabaikan email ini dengan aman.
-          Jika Anda memiliki pertanyaan, hubungi kami di ${supportEmail}.
           Terima kasih,
           Tim ${appName}
         `,
