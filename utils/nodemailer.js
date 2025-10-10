@@ -2,10 +2,12 @@ const nodemailer = require("nodemailer");
 
 // Transporter yang sudah Anda buat, ini tidak perlu diubah.
 const transporter = nodemailer.createTransport({
-  service: "gmail",
+  host: "smtp.gmail.com",
+  port: 465,
+  secure: true, // Gunakan koneksi SSL yang lebih stabil
   auth: {
-    user: "noreply.marketplaceiwak@gmail.com",
-    pass: process.env.GMAIL_APP_PASSWORD, // Pastikan ini ada di file .env
+    user: "noreply.marketplaceiwak@gmail.com", // User Anda sudah benar
+    pass: process.env.GMAIL_APP_PASSWORD, // Pastikan nama variabel ENV ini benar
   },
 });
 
